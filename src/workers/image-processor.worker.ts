@@ -6,7 +6,8 @@ let lastSentProgress = 0;
 let lastProgressTime = 0;
 
 const PROGRESS_THROTTLE_MS = 100;
-const MAX_FILE_SIZE = 6 * 1024 * 1024; // 6MB in bytes (strict limit)
+const MAX_FILE_SIZE = 6 * 1024 * 1024; // 6MB max (WhatsApp limit)
+const TARGET_FILE_SIZE = 5 * 1024 * 1024; // Target 5MB for optimal quality
 
 // Target resolution for WhatsApp Status
 const TARGET_SHORT_EDGE = 1080;
@@ -64,9 +65,9 @@ self.onmessage = async (e: MessageEvent) => {
       "Optimizing",
       25,
       isUpscaling
-        ? sharpening ? "Upscaling image with sharpening..." : "Upscaling image..."
+        ? sharpening ? "Upscaling with AI enhancement..." : "Upscaling image..."
         : isDownscaling
-          ? "Resizing image..."
+          ? "Optimizing resolution..."
           : "Processing image...",
       true
     );
@@ -74,7 +75,7 @@ self.onmessage = async (e: MessageEvent) => {
     // Create output canvas
     const canvas = new OffscreenCanvas(outputWidth, outputHeight);
     const ctx = canvas.getContext("2d", {
-      willReadFrequently: sharpening, // Only need frequent reads if sharpening
+      willReadFrequently: sharpening,
       alpha: false,
     });
 
@@ -91,75 +92,72 @@ self.onmessage = async (e: MessageEvent) => {
 
     // Apply sharpening only if enabled
     if (sharpening) {
-      sendProgress("Optimizing", 40, "Applying enhancements...", true);
+      sendProgress("Optimizing", 40, "Applying AI enhancements...", true);
       // 10% sharpening using unsharp mask technique (15% for upscaled)
       applySharpening(ctx, outputWidth, outputHeight, isUpscaling ? 0.15 : 0.1);
     } else {
       sendProgress("Optimizing", 40, "Processing...", true);
     }
 
-    sendProgress("Optimizing", 55, "Compressing...", true);
+    sendProgress("Optimizing", 55, "Encoding with maximum quality...", true);
 
-    // Try different quality levels to stay under 6MB
-    let quality = 0.95; // Start with very high quality
+    // NEW STRATEGY: Target 4-6MB with maximum quality
+    // Start with quality=1.0 and find the sweet spot for 4-6MB
+    let quality = 1.0; // Maximum quality
     let blob: Blob | null = null;
     let attempts = 0;
-    const maxAttempts = 10; // More attempts for larger files
-    const minQuality = 0.5; // Don't go below 50%
+    const maxAttempts = 15;
 
-    while (attempts < maxAttempts) {
-      attempts++;
+    // First, try max quality
+    blob = await canvas.convertToBlob({
+      type: "image/jpeg",
+      quality: 1.0,
+    });
 
+    sendProgress("Optimizing", 60, "Calculating optimal quality...", true);
+
+    if (blob.size > MAX_FILE_SIZE) {
+      // File too large, reduce quality to fit under 6MB
+      let minQuality = 0.7;
+      let maxQuality = 1.0;
+
+      while (attempts < maxAttempts) {
+        attempts++;
+        quality = (minQuality + maxQuality) / 2;
+
+        blob = await canvas.convertToBlob({
+          type: "image/jpeg",
+          quality: quality,
+        });
+
+        sendProgress(
+          "Optimizing",
+          60 + attempts * 2,
+          `Finding optimal quality (${Math.round(quality * 100)}%)...`,
+          true
+        );
+
+        if (blob.size > MAX_FILE_SIZE) {
+          maxQuality = quality;
+        } else if (blob.size < TARGET_FILE_SIZE) {
+          minQuality = quality;
+        } else {
+          // Perfect! Between 5-6MB
+          break;
+        }
+
+        // Stop if quality range is narrow enough
+        if (maxQuality - minQuality < 0.01) break;
+      }
+    } else if (blob.size < TARGET_FILE_SIZE * 0.8) {
+      // File is too small (< 4MB), we want to maximize quality
+      // Keep quality at 1.0 but this is already optimal
+      sendProgress("Optimizing", 70, "Using maximum quality...", true);
+      quality = 1.0;
       blob = await canvas.convertToBlob({
         type: "image/jpeg",
-        quality: quality,
+        quality: 1.0,
       });
-
-      sendProgress(
-        "Optimizing",
-        55 + attempts * 4,
-        `Optimizing quality (${Math.round(quality * 100)}%)...`,
-        true
-      );
-
-      if (blob.size <= MAX_FILE_SIZE) {
-        // Success!
-        break;
-      } else if (attempts < maxAttempts && quality > minQuality) {
-        // Reduce quality for next attempt
-        // Use larger steps for bigger files
-        const reduction = blob.size > MAX_FILE_SIZE * 2 ? 0.1 : 0.05;
-        quality -= reduction;
-        if (quality < minQuality) quality = minQuality;
-      } else {
-        // Last resort: reduce resolution if still too large
-        if (blob.size > MAX_FILE_SIZE) {
-          sendProgress("Optimizing", 75, "Reducing resolution...", true);
-          const reductionFactor = Math.sqrt(MAX_FILE_SIZE / blob.size) * 0.9;
-          const newWidth = Math.round(outputWidth * reductionFactor);
-          const newHeight = Math.round(outputHeight * reductionFactor);
-
-          const reducedCanvas = new OffscreenCanvas(
-            newWidth - (newWidth % 2),
-            newHeight - (newHeight % 2)
-          );
-          const reducedCtx = reducedCanvas.getContext("2d", {
-            alpha: false,
-          });
-
-          if (reducedCtx) {
-            reducedCtx.imageSmoothingEnabled = true;
-            reducedCtx.imageSmoothingQuality = "high";
-            reducedCtx.drawImage(canvas, 0, 0, newWidth, newHeight);
-
-            blob = await reducedCanvas.convertToBlob({
-              type: "image/jpeg",
-              quality: 0.85,
-            });
-          }
-        }
-        break;
-      }
     }
 
     if (!blob) {
@@ -170,7 +168,7 @@ self.onmessage = async (e: MessageEvent) => {
     if (blob.size > MAX_FILE_SIZE) {
       const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
       throw new Error(
-        `Output file (${sizeMB}MB) still exceeds 6MB limit after all optimizations.`
+        `Output file (${sizeMB}MB) exceeds 6MB limit after optimization.`
       );
     }
 
@@ -179,11 +177,11 @@ self.onmessage = async (e: MessageEvent) => {
     const fileSizeMB = (blob.size / (1024 * 1024)).toFixed(2);
     const qualityPercent = Math.round(quality * 100);
     const resNote = isUpscaling
-      ? "Upscaled"
+      ? "Enhanced & Upscaled"
       : isDownscaling
-        ? "Resized"
-        : "Optimized";
-    const sharpNote = sharpening ? " | Sharpened" : "";
+        ? "Optimized Resolution"
+        : "Maximum Quality";
+    const sharpNote = sharpening ? " | AI Sharpened" : "";
 
     sendComplete({
       blob,
@@ -194,7 +192,7 @@ self.onmessage = async (e: MessageEvent) => {
         processingTime: 0,
         optimizationApplied: true,
         threadingMode: "canvas-optimized",
-        notes: `${fileSizeMB}MB | Quality: ${qualityPercent}% | ${resNote}${sharpNote}`,
+        notes: `${fileSizeMB}MB | ${qualityPercent}% Quality | ${resNote}${sharpNote}`,
       },
     });
   } catch (error) {

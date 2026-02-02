@@ -28,8 +28,6 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,
-        // Force navigation preload to get fresh content
-        navigationPreload: true,
         runtimeCaching: [
           {
             // Workers should use NetworkFirst to always get latest version

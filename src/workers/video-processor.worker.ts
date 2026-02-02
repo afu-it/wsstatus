@@ -473,19 +473,18 @@ function buildOptimizedFFmpegCommand(
     args.push("-vf", filters.join(","));
   }
 
-  // Calculate optimal bitrate to stay under 6MB
+  // Calculate optimal bitrate to maximize quality within 6MB limit
   // File size = (video bitrate + audio bitrate) * duration / 8
-  // 6MB = 6 * 1024 * 1024 bytes = 6291456 bytes
-  // Target: 5.5MB to leave safety margin = 5767168 bytes
+  // Target: 5.8MB for maximum quality = 6076416 bytes
   const targetDuration = plan.targetDuration || info.duration || 30;
   const audioBitrate = 128; // kbps (fixed)
-  const targetFileSizeBytes = 5.5 * 1024 * 1024; // 5.5MB safety margin
+  const targetFileSizeBytes = 5.8 * 1024 * 1024; // 5.8MB target (near max)
   const targetBitrate = Math.floor(
     (targetFileSizeBytes * 8) / targetDuration / 1000 - audioBitrate
   ); // in kbps
 
-  // Cap bitrate between 2000k and 6000k
-  const videoBitrate = Math.max(2000, Math.min(6000, targetBitrate));
+  // MAXIMIZE bitrate between 3000k and 8000k for best quality
+  const videoBitrate = Math.max(3000, Math.min(8000, targetBitrate));
 
   console.log(
     `Duration: ${targetDuration}s, Calculated bitrate: ${targetBitrate}kbps, Using: ${videoBitrate}kbps`
@@ -499,21 +498,19 @@ function buildOptimizedFFmpegCommand(
     "-level",
     "4.2",
     "-preset",
-    "medium", // Better quality than veryfast
+    "veryfast", // MUCH faster encoding (3-5x speed boost)
     "-b:v",
     `${videoBitrate}k`,
     "-maxrate",
-    `${videoBitrate}k`,
+    `${videoBitrate * 1.2}k`, // Allow 20% buffer for quality
     "-bufsize",
-    `${videoBitrate * 1.5}k`,
+    `${videoBitrate * 2}k`, // Larger buffer for better quality
     "-pix_fmt",
     "yuv420p",
     "-g",
     "60",
     "-keyint_min",
     "60",
-    "-x264-params",
-    "ref=2:bframes=3:scenecut=40",
     "-aspect",
     `${plan.outputWidth}:${plan.outputHeight}`,
     "-sar",
