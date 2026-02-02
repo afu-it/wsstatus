@@ -1,0 +1,516 @@
+/// <reference lib="webworker" />
+
+import { getFFmpeg } from "@/lib/ffmpeg-loader";
+import type { WorkerMessage, Preset, VideoConfig } from "@/types";
+
+let lastSentProgress = 0;
+
+self.onmessage = async (e: MessageEvent) => {
+  const { file, preset } = e.data as { file: File; preset: Preset };
+  const config = preset.config as VideoConfig;
+  lastSentProgress = 0;
+
+  try {
+    sendProgress("Initializing", 5, "Loading FFmpeg...");
+
+    const ffmpeg = await getFFmpeg();
+
+    sendProgress("Analyzing", 10, "Analyzing video properties...");
+
+    // Read file into FFmpeg virtual filesystem
+    const fileData = new Uint8Array(await file.arrayBuffer());
+    const inputName = "input" + getFileExtension(file.name);
+    const outputName = "output.mp4";
+
+    await ffmpeg.writeFile(inputName, fileData);
+
+    // CRITICAL: Probe video to make smart decisions
+    const videoInfo = await probeVideo(ffmpeg, inputName);
+
+    sendProgress("Planning", 15, "Calculating optimal settings...");
+
+    // SMART DECISION TREE
+    const processingPlan = determineProcessingPlan(videoInfo, config);
+
+    if (processingPlan.skipProcessing) {
+      sendProgress("Processing", 50, "Applying quick optimization...");
+      await quickPassThrough(ffmpeg, inputName, outputName);
+    } else {
+      await processFullQuality(
+        ffmpeg,
+        inputName,
+        outputName,
+        config,
+        processingPlan,
+        videoInfo
+      );
+    }
+
+    sendProgress("Finalizing", 95, "Finalizing output...");
+
+    // Read output file
+    const outputData = await ffmpeg.readFile(outputName);
+    const blob = new Blob([Uint8Array.from(outputData as Uint8Array)], {
+      type: "video/mp4",
+    });
+
+    // Clean up
+    await ffmpeg.deleteFile(inputName);
+    await ffmpeg.deleteFile(outputName);
+
+    // Send result
+    sendComplete({
+      blob,
+      metadata: {
+        originalSize: file.size,
+        optimizedSize: blob.size,
+        compressionRatio: (1 - blob.size / file.size) * 100,
+        processingTime: 0,
+        optimizationApplied: !processingPlan.skipProcessing,
+      },
+    });
+  } catch (error) {
+    console.error("FFmpeg error:", error);
+    sendError(error);
+  }
+};
+
+interface VideoInfo {
+  width: number;
+  height: number;
+  fps: number;
+  duration: number;
+  bitrate: number;
+  rotation: number;
+  sar: number;
+  effectiveWidth: number;
+  effectiveHeight: number;
+}
+
+interface ProcessingPlan {
+  skipProcessing: boolean;
+  needsResize: boolean;
+  needsFpsConversion: boolean;
+  trimRequired: boolean;
+  targetDuration: number;
+  outputWidth: number;
+  outputHeight: number;
+  rotation: number;
+  needsRotation: boolean;
+}
+
+/**
+ * FAST VIDEO PROBING with rotation and SAR detection
+ */
+async function probeVideo(
+  ffmpeg: import("@ffmpeg/ffmpeg").FFmpeg,
+  inputName: string
+): Promise<VideoInfo> {
+  let logOutput = "";
+
+  const logHandler = ({ message }: { message: string }) => {
+    logOutput += message + "\n";
+  };
+  ffmpeg.on("log", logHandler);
+
+  try {
+    await ffmpeg.exec(["-i", inputName, "-t", "0.1", "-f", "null", "-"]);
+  } catch {
+    // FFmpeg "fails" on probe but we capture logs
+  } finally {
+    ffmpeg.off("log", logHandler);
+  }
+
+  const info = parseFFmpegLogs(logOutput);
+  return info;
+}
+
+function parseFFmpegLogs(logs: string): VideoInfo {
+  // Parse stream dimensions (pre-rotation)
+  const resMatch = logs.match(/(\d{3,5})x(\d{3,5})/);
+  const width = resMatch ? parseInt(resMatch[1]) : 1920;
+  const height = resMatch ? parseInt(resMatch[2]) : 1080;
+
+  const fpsMatch = logs.match(/(\d+(?:\.\d+)?)\s*fps/);
+  const fps = fpsMatch ? parseFloat(fpsMatch[1]) : 30;
+
+  const durationMatch = logs.match(/Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})/);
+  let duration = 90;
+  if (durationMatch) {
+    const hours = parseInt(durationMatch[1]);
+    const minutes = parseInt(durationMatch[2]);
+    const seconds = parseFloat(durationMatch[3]);
+    duration = hours * 3600 + minutes * 60 + seconds;
+  }
+
+  const bitrateMatch = logs.match(/bitrate:\s*(\d+)\s*kb\/s/);
+  const bitrate = bitrateMatch ? parseInt(bitrateMatch[1]) * 1000 : 5000000;
+
+  // Parse rotation metadata (e.g., "rotate : 90")
+  const rotationMatch = logs.match(
+    /rotat(?:e|ion)\s*(?:of)?\s*:\s*([-]?\d+(?:\.\d+)?)/i
+  );
+  const rotation = rotationMatch ? parseFloat(rotationMatch[1]) : 0;
+
+  // Parse SAR (Sample Aspect Ratio) - e.g., "SAR 1:1" or "SAR 16:15"
+  const sarMatch = logs.match(/SAR\s+(\d+):(\d+)/i);
+  const sar = sarMatch ? parseInt(sarMatch[1]) / parseInt(sarMatch[2]) : 1;
+
+  // Compute effective (display) dimensions after rotation
+  let effectiveWidth = width;
+  let effectiveHeight = height;
+
+  // Swap dimensions if rotated 90° or 270°
+  const absRotation = Math.abs(rotation) % 360;
+  if (absRotation === 90 || absRotation === 270) {
+    effectiveWidth = height;
+    effectiveHeight = width;
+  }
+
+  return {
+    width,
+    height,
+    fps,
+    duration,
+    bitrate,
+    rotation,
+    sar,
+    effectiveWidth,
+    effectiveHeight,
+  };
+}
+
+/**
+ * GOLD STANDARD OPTIMIZATION STRATEGY
+ *
+ * WhatsApp Status compression triggers:
+ * 1. File size >16MB = AGGRESSIVE downscaling
+ * 2. Duration: 90s max
+ * 3. Resolution: Prefers 720p, anything higher gets crushed
+ *
+ * Strategy:
+ * - Target 720p SHORT EDGE to stay under 16MB
+ * - Use spatial-only denoise (prevents ghosting on motion)
+ * - Gentle sharpening (prevents mosquito noise)
+ * - FORCE square pixel aspect ratio (fixes squashing)
+ * - Bake rotation into video (prevents player mishandling)
+ * - Optimize for WhatsApp's re-encoding
+ */
+function determineProcessingPlan(
+  info: VideoInfo,
+  config: VideoConfig
+): ProcessingPlan {
+  const targetFps = config.fps;
+
+  // CRITICAL: WhatsApp Status "Sweet Spot" is 720p SHORT EDGE
+  const TARGET_SHORT_EDGE = 720;
+
+  // Use effective (post-rotation) dimensions for all calculations
+  const isPortrait = info.effectiveWidth < info.effectiveHeight;
+  const shortEdge = Math.min(info.effectiveWidth, info.effectiveHeight);
+  const aspectRatio = info.effectiveWidth / info.effectiveHeight;
+
+  // Check if already optimal
+  const isOptimalResolution = shortEdge <= TARGET_SHORT_EDGE;
+  const isOptimalFps = info.fps <= targetFps;
+  const isOptimalDuration = info.duration <= 90;
+  const isReasonableBitrate = info.bitrate < 3500000; // 3.5 Mbps
+  const hasNoRotation = info.rotation === 0;
+  const hasSquarePixels = Math.abs(info.sar - 1) < 0.01;
+
+  // Force processing if rotation exists (must bake it in)
+  const skipProcessing =
+    isOptimalResolution &&
+    isOptimalFps &&
+    isOptimalDuration &&
+    isReasonableBitrate &&
+    hasNoRotation &&
+    hasSquarePixels;
+
+  const needsResize = shortEdge > TARGET_SHORT_EDGE;
+  const needsFpsConversion = info.fps > targetFps;
+  const trimRequired = info.duration > 90;
+  const targetDuration = Math.min(info.duration, 90);
+  const needsRotation = info.rotation !== 0;
+
+  // Calculate output dimensions using EFFECTIVE values
+  let outputWidth = info.effectiveWidth;
+  let outputHeight = info.effectiveHeight;
+
+  if (needsResize) {
+    if (isPortrait) {
+      outputWidth = TARGET_SHORT_EDGE; // 720
+      outputHeight = Math.round(TARGET_SHORT_EDGE / aspectRatio);
+    } else {
+      outputHeight = TARGET_SHORT_EDGE; // 720
+      outputWidth = Math.round(TARGET_SHORT_EDGE * aspectRatio);
+    }
+
+    // Ensure divisible by 2 (Required for YUV420)
+    outputWidth = Math.round(outputWidth / 2) * 2;
+    outputHeight = Math.round(outputHeight / 2) * 2;
+  }
+
+  return {
+    skipProcessing,
+    needsResize,
+    needsFpsConversion,
+    trimRequired,
+    targetDuration,
+    outputWidth,
+    outputHeight,
+    rotation: info.rotation,
+    needsRotation,
+  };
+}
+
+/**
+ * QUICK PASS-THROUGH for already-optimal videos
+ */
+async function quickPassThrough(
+  ffmpeg: import("@ffmpeg/ffmpeg").FFmpeg,
+  inputName: string,
+  outputName: string
+) {
+  await ffmpeg.exec([
+    "-i",
+    inputName,
+    "-t",
+    "90",
+    "-c",
+    "copy", // No re-encoding
+    "-map_metadata",
+    "-1",
+    "-movflags",
+    "+faststart",
+    "-y",
+    outputName,
+  ]);
+}
+
+/**
+ * FULL QUALITY PROCESSING with perceptual pre-conditioning
+ */
+async function processFullQuality(
+  ffmpeg: import("@ffmpeg/ffmpeg").FFmpeg,
+  inputName: string,
+  outputName: string,
+  config: VideoConfig,
+  plan: ProcessingPlan,
+  info: VideoInfo
+) {
+  const ffmpegArgs = buildOptimizedFFmpegCommand(
+    inputName,
+    outputName,
+    config,
+    plan,
+    info
+  );
+
+  const progressHandler = ({ progress }: { progress: number }) => {
+    let p = typeof progress === "number" ? progress : 0;
+    if (isNaN(p) || p < 0) p = 0;
+    if (p > 1) p = 1;
+
+    const percent = Math.round(p * 100);
+    const mappedProgress = 25 + Math.round(percent * 0.7);
+
+    sendProgress(
+      "Optimizing",
+      mappedProgress,
+      "Conditioning for WhatsApp compression..."
+    );
+  };
+
+  ffmpeg.on("progress", progressHandler);
+
+  try {
+    await ffmpeg.exec(ffmpegArgs);
+  } finally {
+    ffmpeg.off("progress", progressHandler);
+  }
+}
+
+/**
+ * GOLD STANDARD ENCODING STRATEGY
+ *
+ * Key optimizations:
+ * 1. Bake rotation with transpose (prevents player mishandling)
+ * 2. Spatial-only denoise (hqdn3d=...:0:0) - No ghosting on motion
+ * 3. Gentle sharpening (0.5) - No mosquito noise
+ * 4. Lanczos scaling - Sharper downscaling
+ * 5. Force square pixels with setsar=1 (prevents stretching)
+ * 6. B-frames enabled (bframes=3) - Better compression & quality
+ * 7. Regular keyframes (GOP=60) - Better scrubbing
+ * 8. Film tune - Preserves texture without blocking
+ */
+function buildOptimizedFFmpegCommand(
+  input: string,
+  output: string,
+  config: VideoConfig,
+  plan: ProcessingPlan,
+  info: VideoInfo
+): string[] {
+  const args: string[] = ["-i", input];
+
+  // CRITICAL: Trim at INPUT stage (90s max for Status)
+  if (plan.trimRequired) {
+    args.push("-t", "90");
+  }
+
+  // --- FILTER CHAIN ---
+  const filters: string[] = [];
+
+  // 1. BAKE ROTATION FIRST (critical fix for stretching)
+  // This embeds the rotation into the video stream and removes metadata dependency
+  if (plan.needsRotation) {
+    const absRotation = Math.abs(plan.rotation) % 360;
+
+    if (absRotation === 90) {
+      // 90° CCW (common for portrait from landscape)
+      filters.push("transpose=2");
+    } else if (absRotation === 270 || plan.rotation === -90) {
+      // 90° CW
+      filters.push("transpose=1");
+    } else if (absRotation === 180) {
+      // 180° (upside down)
+      filters.push("transpose=2,transpose=2");
+    }
+  }
+
+  // 2. FPS Conversion (reduces frame count before heavy processing)
+  if (plan.needsFpsConversion) {
+    filters.push(`fps=${config.fps}`);
+  }
+
+  // 3. Resize & Force Square Pixels
+  // Using Lanczos for sharper downscaling + setsar=1 to force square pixels
+  if (plan.needsResize) {
+    filters.push(
+      `scale=${plan.outputWidth}:${plan.outputHeight}:force_original_aspect_ratio=decrease:flags=lanczos`
+    );
+    filters.push(
+      `pad=${plan.outputWidth}:${plan.outputHeight}:(ow-iw)/2:(oh-ih)/2`
+    );
+    // Force square pixels if SAR was non-square
+    if (Math.abs(info.sar - 1) > 0.01) {
+      filters.push("setsar=1");
+    }
+  } else {
+    // Even if we don't resize, force square pixels to prevent squashing
+    if (Math.abs(info.sar - 1) > 0.01) {
+      filters.push("setsar=1");
+    }
+  }
+
+  // 4. SMART PRE-CONDITIONING (Gold Standard Fixes)
+
+  // FIX: Spatial Denoise ONLY (0:0 temporal prevents ghosting)
+  // Cleans grain without blending frames = no trails on dancers
+  filters.push("hqdn3d=2.0:2.0:0:0");
+
+  // FIX: Gentle Sharpening (0.5 instead of 1.0)
+  // Counters WhatsApp blur without creating halos/mosquito noise
+  filters.push("unsharp=3:3:0.5:3:3:0.0");
+
+  // Contrast/Brightness boost (Survives compression, helps mobile screens)
+  filters.push("eq=contrast=1.05:brightness=0.02");
+
+  if (filters.length > 0) {
+    args.push("-vf", filters.join(","));
+  }
+
+  // --- VIDEO ENCODING (Gold Standard Settings) ---
+  args.push(
+    "-c:v",
+    "libx264",
+    "-profile:v",
+    config.profile, // Usually 'high' or 'main'
+    "-level",
+    "4.0", // Broad mobile compatibility
+    "-preset",
+    "veryfast", // Sweet spot for WASM performance
+
+    // Rate Control: CRF with maxrate cap
+    "-crf",
+    "24", // Good balance for mobile screens
+    "-maxrate",
+    "2500k", // Cap at 2.5 Mbps (WhatsApp crushes to ~1.5)
+    "-bufsize",
+    "3500k",
+
+    // Pixel Format
+    "-pix_fmt",
+    "yuv420p",
+
+    // Tuning
+    "-tune",
+    "film", // Preserves texture without blocking
+
+    // Keyframe Interval (GOP): 60 frames = 2s @ 30fps
+    // WhatsApp seeks better with regular keyframes
+    "-g",
+    "60",
+    "-keyint_min",
+    "60",
+
+    // Advanced x264 Params
+    // bframes=3: CRITICAL for quality (look ahead/behind)
+    // scenecut=40: Detects scene changes for better cuts
+    "-x264-params",
+    "ref=2:bframes=3:scenecut=40",
+
+    // FIX: FORCE ASPECT RATIO (Double protection against squashing)
+    // Container metadata must match the processed frames
+    "-aspect",
+    `${plan.outputWidth}:${plan.outputHeight}`,
+    "-sar",
+    "1:1"
+  );
+
+  // --- AUDIO ENCODING ---
+  args.push(
+    "-c:a",
+    "aac",
+    "-b:a",
+    "96k", // 96k is enough for mobile
+    "-ac",
+    "2",
+    "-ar",
+    "48000" // 48kHz standard for mobile (WhatsApp compatible)
+  );
+
+  // --- CONTAINER OPTIMIZATION ---
+  args.push("-map_metadata", "-1", "-movflags", "+faststart", "-y", output);
+
+  return args;
+}
+
+function getFileExtension(filename: string): string {
+  const parts = filename.split(".");
+  return parts.length > 1 ? "." + parts[parts.length - 1] : ".mp4";
+}
+
+function sendProgress(stage: string, progress: number, message: string) {
+  const finalProgress = Math.max(lastSentProgress, progress);
+  lastSentProgress = finalProgress;
+
+  self.postMessage({
+    type: "progress",
+    payload: { stage, progress: finalProgress, message },
+  } as WorkerMessage);
+}
+
+function sendComplete(result: unknown) {
+  self.postMessage({
+    type: "complete",
+    payload: result,
+  } as WorkerMessage);
+}
+
+function sendError(error: unknown) {
+  self.postMessage({
+    type: "error",
+    payload: error instanceof Error ? error : new Error(String(error)),
+  } as WorkerMessage);
+}

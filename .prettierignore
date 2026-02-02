@@ -1,0 +1,23 @@
+# Dependencies
+node_modules
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# Build outputs
+dist
+dev-dist
+build
+.vite
+*.local
+
+# Cache
+.cache
+.temp
+.tmp
+
+# Misc
+*.log
+.DS_Store
+coverage
+.nyc_output
