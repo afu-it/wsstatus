@@ -256,19 +256,28 @@ export function MediaAnalysis({
         </div>
       )}
 
-      {/* Image Preview (for images only) */}
-      {mediaFile.type === "image" && (
-        <div className="glass-card rounded-2xl overflow-hidden">
-          <img
-            src={previewUrl || mediaFile.preview}
-            alt="Preview"
-            className="w-full h-auto"
-          />
-          {!previewUrl && (
-            <div className="p-2 text-center text-xs text-gray-500">
-              Loading preview...
-            </div>
-          )}
+      {/* Image Preview (for images only) - Compact */}
+      {mediaFile.type === "image" && showEditor && (
+        <div className="glass-card rounded-xl overflow-hidden max-w-sm mx-auto">
+          <div className="relative">
+            <img
+              src={previewUrl || mediaFile.preview}
+              alt="Preview"
+              className="w-full h-auto max-h-64 object-contain"
+            />
+            {!previewUrl && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/10">
+                <div className="text-xs font-semibold text-white bg-black/50 px-3 py-1 rounded-full">
+                  Loading preview...
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="px-3 py-2 bg-gray-50 text-center">
+            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">
+              Preview - HDR {adjustments.hdr}% · Sharpening {adjustments.sharpening}%
+            </p>
+          </div>
         </div>
       )}
 

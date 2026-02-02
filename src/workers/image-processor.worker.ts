@@ -270,7 +270,8 @@ function sendError(error: unknown) {
 }
 
 /**
- * Apply very light sharpening using unsharp mask technique (2%)
+ * Apply sharpening using unsharp mask technique
+ * Amount is multiplied by 3 for more visible effect
  */
 function applySharpening(
   ctx: OffscreenCanvasRenderingContext2D,
@@ -278,12 +279,17 @@ function applySharpening(
   height: number,
   amount: number
 ): void {
+  if (amount <= 0) return;
+
   try {
     const imageData = ctx.getImageData(0, 0, width, height);
     const data = imageData.data;
     const blurData = new Uint8ClampedArray(data);
 
-    const blurRadius = 1;
+    // Multiply amount by 3 for more visible sharpening effect
+    const effectiveAmount = amount * 3;
+
+    const blurRadius = 2; // Increased from 1 for better effect
     for (let y = blurRadius; y < height - blurRadius; y++) {
       for (let x = blurRadius; x < width - blurRadius; x++) {
         const idx = (y * width + x) * 4;
@@ -305,11 +311,11 @@ function applySharpening(
       }
     }
 
-    const sharpenFactor = 1 + amount;
+    const sharpenFactor = 1 + effectiveAmount;
     for (let i = 0; i < data.length; i += 4) {
-      data[i] = Math.min(255, Math.max(0, data[i] * sharpenFactor - blurData[i] * amount));
-      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * sharpenFactor - blurData[i + 1] * amount));
-      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * sharpenFactor - blurData[i + 2] * amount));
+      data[i] = Math.min(255, Math.max(0, data[i] * sharpenFactor - blurData[i] * effectiveAmount));
+      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * sharpenFactor - blurData[i + 1] * effectiveAmount));
+      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * sharpenFactor - blurData[i + 2] * effectiveAmount));
     }
 
     ctx.putImageData(imageData, 0, 0);
@@ -320,6 +326,7 @@ function applySharpening(
 
 /**
  * Apply HDR-like enhancement (local contrast enhancement)
+ * Amount is multiplied by 5 for more visible effect
  */
 function applyHDR(
   ctx: OffscreenCanvasRenderingContext2D,
@@ -334,9 +341,11 @@ function applyHDR(
     const data = imageData.data;
     const resultData = new Uint8ClampedArray(data);
 
-    const radius = 10;
-    const amountH = amount * 0.5;
+    // Multiply amount by 5 for more visible HDR effect
+    const effectiveAmount = amount * 5;
 
+    const radius = 15; // Increased from 10 for better effect
+    
     for (let y = radius; y < height - radius; y++) {
       for (let x = radius; x < width - radius; x++) {
         const idx = (y * width + x) * 4;
@@ -356,10 +365,10 @@ function applyHDR(
         const gAvg = g / count;
         const bAvg = b / count;
 
-        const factor = 1 + amountH;
-        resultData[idx] = Math.min(255, Math.max(0, data[idx] * factor - rAvg * amountH));
-        resultData[idx + 1] = Math.min(255, Math.max(0, data[idx + 1] * factor - gAvg * amountH));
-        resultData[idx + 2] = Math.min(255, Math.max(0, data[idx + 2] * factor - bAvg * amountH));
+        const factor = 1 + effectiveAmount;
+        resultData[idx] = Math.min(255, Math.max(0, data[idx] * factor - rAvg * effectiveAmount));
+        resultData[idx + 1] = Math.min(255, Math.max(0, data[idx + 1] * factor - gAvg * effectiveAmount));
+        resultData[idx + 2] = Math.min(255, Math.max(0, data[idx + 2] * factor - bAvg * effectiveAmount));
       }
     }
 
