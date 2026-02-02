@@ -8,14 +8,14 @@ let lastProgressTime = 0;
 
 const PROGRESS_THROTTLE_MS = 100;
 
-// WhatsApp Status optimal settings
+// WhatsApp Status dimensions
 const WHATSAPP_PORTRAIT_WIDTH = 1080;
 const WHATSAPP_PORTRAIT_HEIGHT = 1920;
 const WHATSAPP_LANDSCAPE_WIDTH = 1920;
 const WHATSAPP_LANDSCAPE_HEIGHT = 1080;
 
-// Video duration for static images (PureStatus style)
-const IMAGE_VIDEO_DURATION = 5; // 5 seconds
+// Video duration for images
+const IMAGE_VIDEO_DURATION = 5;
 
 self.onmessage = async (e: MessageEvent) => {
   const { file } = e.data as { file: File; preset: Preset };
@@ -27,11 +27,11 @@ self.onmessage = async (e: MessageEvent) => {
 
     const ffmpeg = await getFFmpeg();
 
-    sendProgress("Analyzing", 10, "Analyzing image...", true);
+    sendProgress("Analyzing", 10, "Reading image...", true);
 
     const fileData = new Uint8Array(await file.arrayBuffer());
     const inputName = "input" + getFileExtension(file.name);
-    const outputName = "output.mp4"; // Output as MP4 for HD quality
+    const outputName = "output.mp4";
 
     await ffmpeg.writeFile(inputName, fileData);
 
@@ -42,55 +42,43 @@ self.onmessage = async (e: MessageEvent) => {
     try {
       imageInfo = await probeImage(ffmpeg, inputName);
     } catch (error) {
-      console.error("❌ Probe failed:", error);
+      console.error("Probe failed:", error);
       imageInfo = { width: 1920, height: 1080 };
     }
 
     sendProgress("Planning", 20, "Converting to HD video...", true);
 
-    // Determine target dimensions
+    // Determine orientation
     const isPortrait = imageInfo.height > imageInfo.width;
-    let targetWidth: number;
-    let targetHeight: number;
+    const targetWidth = isPortrait ? WHATSAPP_PORTRAIT_WIDTH : WHATSAPP_LANDSCAPE_WIDTH;
+    const targetHeight = isPortrait ? WHATSAPP_PORTRAIT_HEIGHT : WHATSAPP_LANDSCAPE_HEIGHT;
 
-    if (isPortrait) {
-      targetWidth = WHATSAPP_PORTRAIT_WIDTH;
-      targetHeight = WHATSAPP_PORTRAIT_HEIGHT;
-    } else {
-      targetWidth = WHATSAPP_LANDSCAPE_WIDTH;
-      targetHeight = WHATSAPP_LANDSCAPE_HEIGHT;
-    }
+    sendProgress("Converting", 30, "Creating HD video...", true);
 
-    sendProgress("Converting", 30, "Creating HD video for WhatsApp...", true);
+    // Simple, reliable FFmpeg command
+    const ffmpegArgs = [
+      "-loop", "1",
+      "-i", inputName,
+      "-t", IMAGE_VIDEO_DURATION.toString(),
+      "-vf", `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight}`,
+      "-c:v", "libx264",
+      "-preset", "fast",
+      "-crf", "23",
+      "-pix_fmt", "yuv420p",
+      "-an",
+      "-y", outputName
+    ];
 
-    // Build FFmpeg command to convert image to video
-    const ffmpegArgs = buildImageToVideoCommand(
-      inputName,
-      outputName,
-      targetWidth,
-      targetHeight
-    );
-
-    // Progress handler
+    // Progress tracking
     const progressHandler = ({ time, progress }: { time: number; progress: number }) => {
-      let rawPercent = 0;
-
+      let percent = 0;
       if (typeof time === "number" && time > 0) {
-        const t = time > IMAGE_VIDEO_DURATION * 100 ? time / 1000000 : time;
-        rawPercent = t / IMAGE_VIDEO_DURATION;
+        percent = Math.min(time / IMAGE_VIDEO_DURATION, 1);
       } else if (typeof progress === "number") {
-        rawPercent = progress;
+        percent = progress;
       }
-
-      if (isNaN(rawPercent) || rawPercent < 0) rawPercent = 0;
-      if (rawPercent > 1) rawPercent = 1;
-
-      const mappedProgress = 30 + Math.round(rawPercent * 60);
-      sendProgress(
-        "Converting",
-        mappedProgress,
-        `Creating HD video... ${Math.round(rawPercent * 100)}%`
-      );
+      const mappedProgress = 30 + Math.round(percent * 60);
+      sendProgress("Converting", mappedProgress, `Processing... ${Math.round(percent * 100)}%`);
     };
 
     ffmpeg.on("progress", progressHandler);
@@ -98,46 +86,38 @@ self.onmessage = async (e: MessageEvent) => {
     try {
       await ffmpeg.exec(ffmpegArgs);
     } catch (execError) {
-      console.error("❌ FFmpeg exec failed:", execError);
-      throw execError;
+      console.error("FFmpeg exec failed:", execError);
+      throw new Error("Video conversion failed. Please try a different image.");
     } finally {
       ffmpeg.off("progress", progressHandler);
     }
 
-    sendProgress("Finalizing", 92, "Reading HD video...", true);
+    sendProgress("Finalizing", 92, "Reading result...", true);
 
     const outputData = await ffmpeg.readFile(outputName);
-
-    sendProgress("Finalizing", 96, "Generating result...", true);
 
     const blob = new Blob([Uint8Array.from(outputData as Uint8Array)], {
       type: "video/mp4",
     });
 
-    sendProgress("Finalizing", 98, "Cleaning up...", true);
-
     await ffmpeg.deleteFile(inputName);
     await ffmpeg.deleteFile(outputName);
 
-    sendProgress("Finalizing", 99, "Complete!", true);
-
-    const compressionRatio = ((1 - blob.size / file.size) * 100);
-    const fileSizeMB = (blob.size / (1024 * 1024)).toFixed(2);
+    sendProgress("Finalizing", 99, "Done!", true);
 
     sendComplete({
       blob,
       metadata: {
         originalSize: file.size,
         optimizedSize: blob.size,
-        compressionRatio: compressionRatio,
+        compressionRatio: ((1 - blob.size / file.size) * 100),
         processingTime: 0,
         optimizationApplied: true,
         threadingMode: "ffmpeg-hd-video",
-        notes: `${fileSizeMB}MB • ${targetWidth}×${targetHeight} • HD Video ${IMAGE_VIDEO_DURATION}s`,
       },
     });
   } catch (error) {
-    console.error("❌ Image-to-Video processing error:", error);
+    console.error("Processing error:", error);
     sendError(error);
   }
 };
@@ -156,18 +136,15 @@ async function probeImage(
   const logHandler = ({ message }: { message: string }) => {
     logOutput += message + "\n";
   };
+
   ffmpeg.on("log", logHandler);
 
   try {
     await ffmpeg.exec(["-i", inputName, "-f", "null", "-"]);
-  } catch (probeError) {
-    console.log("Probe exec returned (expected):", probeError);
+  } catch {
+    // Expected to fail
   } finally {
     ffmpeg.off("log", logHandler);
-  }
-
-  if (!logOutput || logOutput.length < 50) {
-    throw new Error("Probe produced insufficient output");
   }
 
   const resMatch = logOutput.match(/(\d{3,5})x(\d{3,5})/);
@@ -177,89 +154,14 @@ async function probeImage(
   return { width, height };
 }
 
-/**
- * Build FFmpeg command to convert image to HD video
- * PureStatus method: Photos → Videos for HD quality on WhatsApp Status
- */
-function buildImageToVideoCommand(
-  input: string,
-  output: string,
-  targetWidth: number,
-  targetHeight: number
-): string[] {
-  const args: string[] = [
-    "-loop",
-    "1", // Loop the image
-    "-i",
-    input,
-    "-t",
-    IMAGE_VIDEO_DURATION.toString(), // Video duration
-    
-    // Video filters: scale, crop, sharpen
-    "-vf",
-    `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight},unsharp=5:5:0.8:3:3:0.4,fps=30`,
-    // ^ unsharp = sharpening filter
-    // ^ fps=30 = 30fps (WhatsApp standard)
-    
-    // Video codec settings (H.264 for compatibility)
-    "-c:v",
-    "libx264",
-    "-profile:v",
-    "high",
-    "-level",
-    "4.2",
-    "-preset",
-    "medium", // Good balance of speed/quality
-    "-crf",
-    "18", // Very high quality (18 = near-lossless)
-    
-    // Bitrate control for consistent quality
-    "-maxrate",
-    "8000k", // 8Mbps max
-    "-bufsize",
-    "12000k",
-    
-    // Color settings
-    "-pix_fmt",
-    "yuv420p", // Standard color format
-    
-    // Keyframe settings
-    "-g",
-    "60", // Keyframe every 2 seconds at 30fps
-    "-keyint_min",
-    "60",
-    
-    // No audio
-    "-an",
-    
-    // Fast start for web playback
-    "-movflags",
-    "+faststart",
-    
-    // Overwrite
-    "-y",
-    output
-  ];
-
-  return args;
-}
-
 function getFileExtension(filename: string): string {
   const parts = filename.split(".");
   return parts.length > 1 ? "." + parts[parts.length - 1] : ".jpg";
 }
 
-function sendProgress(
-  stage: string,
-  progress: number,
-  message: string,
-  force = false
-) {
+function sendProgress(stage: string, progress: number, message: string, force = false) {
   const now = Date.now();
-
-  if (!force && now - lastProgressTime < PROGRESS_THROTTLE_MS) {
-    return;
-  }
+  if (!force && now - lastProgressTime < PROGRESS_THROTTLE_MS) return;
 
   const finalProgress = Math.min(99, Math.max(lastSentProgress, progress));
   lastSentProgress = finalProgress;
@@ -272,10 +174,7 @@ function sendProgress(
 }
 
 function sendComplete(result: unknown) {
-  self.postMessage({
-    type: "complete",
-    payload: result,
-  } as WorkerMessage);
+  self.postMessage({ type: "complete", payload: result } as WorkerMessage);
 }
 
 function sendError(error: unknown) {
