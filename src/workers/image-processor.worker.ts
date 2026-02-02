@@ -95,8 +95,8 @@ self.onmessage = async (e: MessageEvent) => {
     // Apply 8% sharpening
     applySharpening(ctx, outputWidth, outputHeight, 0.08);
 
-    // Reduce highlights by 10%
-    reduceHighlights(ctx, outputWidth, outputHeight, 0.10);
+    // Reduce highlights by 5%
+    reduceHighlights(ctx, outputWidth, outputHeight, 0.05);
 
     // Apply color adjustments
     applyContrast(ctx, outputWidth, outputHeight, 0.10);
@@ -143,8 +143,8 @@ self.onmessage = async (e: MessageEvent) => {
         // Apply 8% sharpening to upscaled image
         applySharpening(upscaledCtx, newWidth, newHeight, 0.08);
 
-        // Reduce highlights by 10%
-        reduceHighlights(upscaledCtx, newWidth, newHeight, 0.10);
+        // Reduce highlights by 5%
+        reduceHighlights(upscaledCtx, newWidth, newHeight, 0.05);
 
         // Apply color adjustments
         applyContrast(upscaledCtx, newWidth, newHeight, 0.10);
