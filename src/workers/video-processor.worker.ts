@@ -269,47 +269,17 @@ function determineProcessingPlan(
   const trimRequired = info.duration > 90;
   const targetDuration = Math.min(info.duration, 90);
   const needsRotation = info.rotation !== 0;
+  const needsFpsConversion = info.fps > targetFps;
 
   return {
     skipProcessing,
     needsResize: false, // Never resize - keep original
+    needsFpsConversion,
     outputWidth,
     outputHeight,
     targetDuration,
     trimRequired,
     fps: Math.min(info.fps, targetFps), // Cap at 30fps if higher
-    rotation: info.rotation,
-    needsRotation,
-  };
-}
-  } else if (
-    info.effectiveWidth <= maxWidth &&
-    info.effectiveHeight <= maxHeight
-  ) {
-    // Within limits, no resize needed
-    needsResize = false;
-    outputWidth = info.effectiveWidth;
-    outputHeight = info.effectiveHeight;
-  } else {
-    // Scale down proportionally
-    const scaleRatio = Math.min(
-      maxWidth / info.effectiveWidth,
-      maxHeight / info.effectiveHeight
-    );
-    outputWidth = Math.round((info.effectiveWidth * scaleRatio) / 2) * 2;
-    outputHeight = Math.round((info.effectiveHeight * scaleRatio) / 2) * 2;
-  }
-
-  const needsFpsConversion = info.fps > targetFps;
-
-  return {
-    skipProcessing,
-    needsResize,
-    needsFpsConversion,
-    trimRequired,
-    targetDuration,
-    outputWidth,
-    outputHeight,
     rotation: info.rotation,
     needsRotation,
   };
