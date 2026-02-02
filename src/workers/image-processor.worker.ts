@@ -271,14 +271,11 @@ function buildImageOptimizeCommand(
   _info: ImageInfo
 ): string[] {
   const args: string[] = [
-    "-threads",
-    "1",
     "-i",
     input,
   ];
 
   const filters: string[] = [];
-  let didBakeRotation = false;
 
   // Handle rotation metadata
   if (plan.needsRotation) {
@@ -287,23 +284,17 @@ function buildImageOptimizeCommand(
 
     if (rot === 90) {
       filters.push("transpose=1");
-      didBakeRotation = true;
     } else if (rot === 270) {
       filters.push("transpose=2");
-      didBakeRotation = true;
     } else if (rot === 180) {
-      filters.push("transpose=2,transpose=2");
-      didBakeRotation = true;
+      filters.push("hflip,vflip");
     }
   }
 
   // Resize if needed
   if (plan.needsResize) {
     filters.push(
-      `scale=${plan.outputWidth}:${plan.outputHeight}:force_original_aspect_ratio=decrease:flags=lanczos`
-    );
-    filters.push(
-      `pad=${plan.outputWidth}:${plan.outputHeight}:(ow-iw)/2:(oh-ih)/2:color=black`
+      `scale=${plan.outputWidth}:${plan.outputHeight}:force_original_aspect_ratio=decrease`
     );
   }
 
@@ -311,17 +302,11 @@ function buildImageOptimizeCommand(
     args.push("-vf", filters.join(","));
   }
 
-  // JPEG encoding settings optimized for WhatsApp
+  // JPEG encoding settings
   args.push(
     "-q:v",
-    "2", // High quality JPEG (scale 2-31, lower is better)
-    "-pix_fmt",
-    "yuvj420p" // JPEG color space
+    "2" // High quality JPEG (scale 2-31, lower is better)
   );
-
-  if (didBakeRotation) {
-    args.push("-metadata:s:v:0", "rotate=0");
-  }
 
   args.push("-y", output);
 
