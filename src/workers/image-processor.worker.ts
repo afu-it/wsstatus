@@ -8,11 +8,14 @@ let lastProgressTime = 0;
 
 const PROGRESS_THROTTLE_MS = 100;
 
-// WhatsApp Status EXACT optimal settings (tested and proven)
+// WhatsApp Status optimal settings
 const WHATSAPP_PORTRAIT_WIDTH = 1080;
 const WHATSAPP_PORTRAIT_HEIGHT = 1920;
 const WHATSAPP_LANDSCAPE_WIDTH = 1920;
 const WHATSAPP_LANDSCAPE_HEIGHT = 1080;
+
+// Video duration for static images (PureStatus style)
+const IMAGE_VIDEO_DURATION = 5; // 5 seconds
 
 self.onmessage = async (e: MessageEvent) => {
   const { file } = e.data as { file: File; preset: Preset };
@@ -28,26 +31,22 @@ self.onmessage = async (e: MessageEvent) => {
 
     const fileData = new Uint8Array(await file.arrayBuffer());
     const inputName = "input" + getFileExtension(file.name);
-    const outputName = "output.jpg";
+    const outputName = "output.mp4"; // Output as MP4 for HD quality
 
     await ffmpeg.writeFile(inputName, fileData);
 
     sendProgress("Analyzing", 15, "Detecting dimensions...", true);
 
-    // Probe image to get dimensions
+    // Probe image
     let imageInfo: ImageInfo;
     try {
       imageInfo = await probeImage(ffmpeg, inputName);
     } catch (error) {
       console.error("❌ Probe failed:", error);
-      // Use default if probe fails
-      imageInfo = {
-        width: 1920,
-        height: 1080,
-      };
+      imageInfo = { width: 1920, height: 1080 };
     }
 
-    sendProgress("Planning", 20, "Optimizing for WhatsApp...", true);
+    sendProgress("Planning", 20, "Converting to HD video...", true);
 
     // Determine target dimensions
     const isPortrait = imageInfo.height > imageInfo.width;
@@ -62,10 +61,10 @@ self.onmessage = async (e: MessageEvent) => {
       targetHeight = WHATSAPP_LANDSCAPE_HEIGHT;
     }
 
-    sendProgress("Converting", 30, "Processing with FFmpeg...", true);
+    sendProgress("Converting", 30, "Creating HD video for WhatsApp...", true);
 
-    // Build optimized FFmpeg command
-    const ffmpegArgs = buildOptimizedImageCommand(
+    // Build FFmpeg command to convert image to video
+    const ffmpegArgs = buildImageToVideoCommand(
       inputName,
       outputName,
       targetWidth,
@@ -73,12 +72,24 @@ self.onmessage = async (e: MessageEvent) => {
     );
 
     // Progress handler
-    const progressHandler = ({ progress }: { progress: number }) => {
-      const mappedProgress = 30 + Math.round(progress * 60);
+    const progressHandler = ({ time, progress }: { time: number; progress: number }) => {
+      let rawPercent = 0;
+
+      if (typeof time === "number" && time > 0) {
+        const t = time > IMAGE_VIDEO_DURATION * 100 ? time / 1000000 : time;
+        rawPercent = t / IMAGE_VIDEO_DURATION;
+      } else if (typeof progress === "number") {
+        rawPercent = progress;
+      }
+
+      if (isNaN(rawPercent) || rawPercent < 0) rawPercent = 0;
+      if (rawPercent > 1) rawPercent = 1;
+
+      const mappedProgress = 30 + Math.round(rawPercent * 60);
       sendProgress(
         "Converting",
         mappedProgress,
-        `Optimizing... ${Math.round(progress * 100)}%`
+        `Creating HD video... ${Math.round(rawPercent * 100)}%`
       );
     };
 
@@ -93,14 +104,14 @@ self.onmessage = async (e: MessageEvent) => {
       ffmpeg.off("progress", progressHandler);
     }
 
-    sendProgress("Finalizing", 92, "Reading optimized image...", true);
+    sendProgress("Finalizing", 92, "Reading HD video...", true);
 
     const outputData = await ffmpeg.readFile(outputName);
 
     sendProgress("Finalizing", 96, "Generating result...", true);
 
     const blob = new Blob([Uint8Array.from(outputData as Uint8Array)], {
-      type: "image/jpeg",
+      type: "video/mp4",
     });
 
     sendProgress("Finalizing", 98, "Cleaning up...", true);
@@ -121,12 +132,12 @@ self.onmessage = async (e: MessageEvent) => {
         compressionRatio: compressionRatio,
         processingTime: 0,
         optimizationApplied: true,
-        threadingMode: "ffmpeg-optimized",
-        notes: `${fileSizeMB}MB • ${targetWidth}×${targetHeight} • WhatsApp-Ready`,
+        threadingMode: "ffmpeg-hd-video",
+        notes: `${fileSizeMB}MB • ${targetWidth}×${targetHeight} • HD Video ${IMAGE_VIDEO_DURATION}s`,
       },
     });
   } catch (error) {
-    console.error("❌ FFmpeg processing error:", error);
+    console.error("❌ Image-to-Video processing error:", error);
     sendError(error);
   }
 };
@@ -150,7 +161,6 @@ async function probeImage(
   try {
     await ffmpeg.exec(["-i", inputName, "-f", "null", "-"]);
   } catch (probeError) {
-    // FFmpeg "fails" on probe but we capture logs
     console.log("Probe exec returned (expected):", probeError);
   } finally {
     ffmpeg.off("log", logHandler);
@@ -160,12 +170,7 @@ async function probeImage(
     throw new Error("Probe produced insufficient output");
   }
 
-  const info = parseFFmpegLogs(logOutput);
-  return info;
-}
-
-function parseFFmpegLogs(logs: string): ImageInfo {
-  const resMatch = logs.match(/(\d{3,5})x(\d{3,5})/);
+  const resMatch = logOutput.match(/(\d{3,5})x(\d{3,5})/);
   const width = resMatch ? parseInt(resMatch[1]) : 1920;
   const height = resMatch ? parseInt(resMatch[2]) : 1080;
 
@@ -173,34 +178,65 @@ function parseFFmpegLogs(logs: string): ImageInfo {
 }
 
 /**
- * Build optimized FFmpeg command for WhatsApp Status images
- * Based on PureStatus quality settings + research
+ * Build FFmpeg command to convert image to HD video
+ * PureStatus method: Photos → Videos for HD quality on WhatsApp Status
  */
-function buildOptimizedImageCommand(
+function buildImageToVideoCommand(
   input: string,
   output: string,
   targetWidth: number,
   targetHeight: number
 ): string[] {
   const args: string[] = [
+    "-loop",
+    "1", // Loop the image
     "-i",
     input,
-    // Video filter for scaling and quality
+    "-t",
+    IMAGE_VIDEO_DURATION.toString(), // Video duration
+    
+    // Video filters: scale, crop, sharpen
     "-vf",
-    `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight},unsharp=5:5:0.8:3:3:0.4`,
-    // ^ unsharp filter: sharpen to compensate WhatsApp blur
-    //   5:5:0.8 = luma sharpening (radius:radius:amount)
-    //   3:3:0.4 = chroma sharpening
+    `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight},unsharp=5:5:0.8:3:3:0.4,fps=30`,
+    // ^ unsharp = sharpening filter
+    // ^ fps=30 = 30fps (WhatsApp standard)
     
-    // JPEG quality settings (87% = sweet spot for WhatsApp)
-    "-q:v",
-    "2", // JPEG quality scale (2 ≈ 87%)
+    // Video codec settings (H.264 for compatibility)
+    "-c:v",
+    "libx264",
+    "-profile:v",
+    "high",
+    "-level",
+    "4.2",
+    "-preset",
+    "medium", // Good balance of speed/quality
+    "-crf",
+    "18", // Very high quality (18 = near-lossless)
     
-    // Color space optimization
+    // Bitrate control for consistent quality
+    "-maxrate",
+    "8000k", // 8Mbps max
+    "-bufsize",
+    "12000k",
+    
+    // Color settings
     "-pix_fmt",
-    "yuvj420p", // JPEG color space
+    "yuv420p", // Standard color format
     
-    // Overwrite output
+    // Keyframe settings
+    "-g",
+    "60", // Keyframe every 2 seconds at 30fps
+    "-keyint_min",
+    "60",
+    
+    // No audio
+    "-an",
+    
+    // Fast start for web playback
+    "-movflags",
+    "+faststart",
+    
+    // Overwrite
     "-y",
     output
   ];

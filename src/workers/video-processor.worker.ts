@@ -19,9 +19,20 @@ self.onmessage = async (e: MessageEvent) => {
 
     const ffmpeg = await getFFmpeg();
 
-    sendProgress("Analyzing", 10, "Analyzing video properties...", true);
+    sendProgress("Analyzing", 10, "Reading video file...", true);
 
-    const fileData = new Uint8Array(await file.arrayBuffer());
+    // Read file with better error handling
+    let fileData: Uint8Array;
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      fileData = new Uint8Array(arrayBuffer);
+    } catch (readError) {
+      console.error("❌ File read error:", readError);
+      throw new Error(
+        "Failed to read video file. The file may have been moved or deleted. Please try selecting it again."
+      );
+    }
+
     const inputName = "input" + getFileExtension(file.name);
     const outputName = "output.mp4";
 
