@@ -19,12 +19,14 @@ self.onmessage = async (e: MessageEvent) => {
     file: File;
     adjustments?: {
       sharpening: number;
+      hdr: number;
       upscale: boolean;
     };
   };
 
   const adj = adjustments || {
     sharpening: 8,
+    hdr: 2,
     upscale: true,
   };
 
@@ -107,6 +109,11 @@ self.onmessage = async (e: MessageEvent) => {
 
     // Apply sharpening
     applySharpening(ctx, outputWidth, outputHeight, adj.sharpening / 100);
+
+    sendProgress("Optimizing", 45, "Applying HDR...", true);
+
+    // Apply HDR
+    applyHDR(ctx, outputWidth, outputHeight, adj.hdr / 100);
 
     sendProgress("Optimizing", 55, "Encoding...", true);
 
@@ -275,5 +282,67 @@ function applySharpening(
     ctx.putImageData(imageData, 0, 0);
   } catch (e) {
     console.warn("Sharpening failed:", e);
+  }
+}
+
+/**
+ * Apply HDR-like enhancement (local contrast enhancement)
+ */
+function applyHDR(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  if (amount <= 0) return;
+
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const resultData = new Uint8ClampedArray(data);
+
+    const radius = 10;
+    const amountH = amount * 0.5;
+
+    for (let y = radius; y < height - radius; y++) {
+      for (let x = radius; x < width - radius; x++) {
+        const idx = (y * width + x) * 4;
+
+        let r = 0, g = 0, b = 0, count = 0;
+        for (let dy = -radius; dy <= radius; dy++) {
+          for (let dx = -radius; dx <= radius; dx++) {
+            const nIdx = ((y + dy) * width + (x + dx)) * 4;
+            r += data[nIdx];
+            g += data[nIdx + 1];
+            b += data[nIdx + 2];
+            count++;
+          }
+        }
+
+        const rAvg = r / count;
+        const gAvg = g / count;
+        const bAvg = b / count;
+
+        const factor = 1 + amountH;
+        resultData[idx] = Math.min(255, Math.max(0, data[idx] * factor - rAvg * amountH));
+        resultData[idx + 1] = Math.min(255, Math.max(0, data[idx + 1] * factor - gAvg * amountH));
+        resultData[idx + 2] = Math.min(255, Math.max(0, data[idx + 2] * factor - bAvg * amountH));
+      }
+    }
+
+    for (let i = 0; i < data.length; i += 4) {
+      if (i >= width * 4 * radius && i < width * 4 * (height - radius)) {
+        const x = (i / 4) % width;
+        if (x >= radius && x < width - radius) {
+          data[i] = resultData[i];
+          data[i + 1] = resultData[i + 1];
+          data[i + 2] = resultData[i + 2];
+        }
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    console.warn("HDR failed:", e);
   }
 }

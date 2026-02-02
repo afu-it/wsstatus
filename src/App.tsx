@@ -140,7 +140,7 @@ function App() {
     setStage("analysis");
   };
 
-  const handleOptimize = async (adjustments?: { sharpening: number; upscale: boolean }) => {
+  const handleOptimize = async (adjustments?: { sharpening: number; hdr: number; upscale: boolean }) => {
     if (!mediaFile) return;
 
     setStage("processing");
