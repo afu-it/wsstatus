@@ -187,39 +187,51 @@ export function ResultView({
       </div>
 
       {/* HD Quality Trick Guide */}
-      <div className="glass-card rounded-2xl p-4 bg-blue-50/50 border-2 border-blue-200">
-        <div className="flex items-center gap-1.5 text-[9px] font-bold text-blue-600 uppercase tracking-wide mb-3">
-          <span className="w-1 h-1 rounded-full bg-blue-400" />
-          HD Quality Trick (IMPORTANT!)
+      <div className="glass-card rounded-2xl p-4 bg-gradient-to-br from-green-50 to-blue-50 border-2 border-green-300">
+        <div className="flex items-center gap-1.5 text-[9px] font-bold text-green-700 uppercase tracking-wide mb-3">
+          <span className="w-1 h-1 rounded-full bg-green-500 animate-pulse" />
+          🎯 HD Quality Trick (MUST READ!)
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           <div className="flex items-start gap-2">
-            <span className="text-xs font-black text-blue-600 min-w-[20px]">1.</span>
-            <p className="text-xs font-semibold text-gray-700">
-              Send the GIF to <strong>yourself</strong> in WhatsApp
+            <span className="text-sm font-black text-green-600 min-w-[22px]">1.</span>
+            <p className="text-xs font-semibold text-gray-800">
+              Send to <strong>yourself</strong> in WhatsApp chat
+            </p>
+          </div>
+          <div className="flex items-start gap-2 bg-yellow-50 border-2 border-yellow-400 rounded-lg p-2">
+            <span className="text-sm font-black text-yellow-700 min-w-[22px]">2.</span>
+            <div>
+              <p className="text-xs font-bold text-yellow-900 mb-1">
+                ⚠️ IMPORTANT: Choose <strong className="bg-yellow-200 px-1">"HD"</strong> when sending!
+              </p>
+              <p className="text-[10px] text-yellow-800">
+                WhatsApp will show HD toggle - ALWAYS select it!
+              </p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-sm font-black text-green-600 min-w-[22px]">3.</span>
+            <p className="text-xs font-semibold text-gray-800">
+              <strong>Click</strong> the uploaded image/video to open it
             </p>
           </div>
           <div className="flex items-start gap-2">
-            <span className="text-xs font-black text-blue-600 min-w-[20px]">2.</span>
-            <p className="text-xs font-semibold text-gray-700">
-              <strong>Open</strong> the GIF (tap to view full screen)
+            <span className="text-sm font-black text-green-600 min-w-[22px]">4.</span>
+            <p className="text-xs font-semibold text-gray-800">
+              Tap <strong>3 dots (⋮)</strong> in top right
             </p>
           </div>
           <div className="flex items-start gap-2">
-            <span className="text-xs font-black text-blue-600 min-w-[20px]">3.</span>
-            <p className="text-xs font-semibold text-gray-700">
-              Tap <strong>3 dots (⋮)</strong> in top right corner
+            <span className="text-sm font-black text-green-600 min-w-[22px]">5.</span>
+            <p className="text-xs font-semibold text-gray-800">
+              Select <strong>Share → My Status</strong>
             </p>
           </div>
-          <div className="flex items-start gap-2">
-            <span className="text-xs font-black text-blue-600 min-w-[20px]">4.</span>
-            <p className="text-xs font-semibold text-gray-700">
-              Select <strong>Share → Status</strong>
-            </p>
-          </div>
-          <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <p className="text-[10px] font-bold text-yellow-800">
-              ⚠️ DON'T use "Forward to Status" - it compresses quality!
+          <div className="mt-3 p-2.5 bg-red-50 border-2 border-red-300 rounded-lg">
+            <p className="text-[10px] font-bold text-red-800 text-center">
+              ❌ DON'T use "Forward to Status" - it compresses!<br/>
+              ✅ ALWAYS use: Open → 3 dots → Share → Status
             </p>
           </div>
         </div>

@@ -29,12 +29,12 @@ self.onmessage = async (e: MessageEvent) => {
 
     sendProgress("Converting", 30, "Creating optimized GIF...", true);
 
-    // Simple command: keep original dimensions, just convert to GIF
+    // Simple command: keep original dimensions, add 10% sharpening
     const ffmpegArgs = [
       "-loop", "1",
       "-i", inputName,
       "-t", GIF_DURATION.toString(),
-      "-vf", "fps=15", // 15fps for good quality/size balance
+      "-vf", "fps=15,unsharp=5:5:0.5:5:5:0.0", // 10% sharpening (luma only)
       "-y", outputName
     ];
 
