@@ -7,6 +7,7 @@ import { version } from "./package.json";
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: "/wsstatus/",
   define: {
     __APP_VERSION__: JSON.stringify(version),
   },
