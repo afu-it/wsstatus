@@ -7,7 +7,8 @@ let lastProgressTime = 0;
 
 const PROGRESS_THROTTLE_MS = 100;
 const MAX_FILE_SIZE = 6 * 1024 * 1024; // 6MB max (WhatsApp limit)
-const TARGET_FILE_SIZE = 5 * 1024 * 1024; // Target 5MB for optimal quality
+const TARGET_MIN_SIZE = 4 * 1024 * 1024; // 4MB minimum target
+const TARGET_MAX_SIZE = 5.5 * 1024 * 1024; // 5.5MB target
 
 // Target resolution for WhatsApp Status
 const TARGET_SHORT_EDGE = 1080;
@@ -47,7 +48,7 @@ self.onmessage = async (e: MessageEvent) => {
     // Calculate scale to fit within target dimensions while maintaining aspect ratio
     const scaleX = targetWidth / origWidth;
     const scaleY = targetHeight / origHeight;
-    const scale = Math.min(scaleX, scaleY);
+    let scale = Math.min(scaleX, scaleY);
 
     // Calculate actual output dimensions
     let outputWidth = Math.round(origWidth * scale);
@@ -65,7 +66,7 @@ self.onmessage = async (e: MessageEvent) => {
       "Optimizing",
       25,
       isUpscaling
-        ? sharpening ? "Upscaling with AI enhancement..." : "Upscaling image..."
+        ? sharpening ? "Upscaling with enhancement..." : "Upscaling image..."
         : isDownscaling
           ? "Optimizing resolution..."
           : "Processing image...",
@@ -73,8 +74,8 @@ self.onmessage = async (e: MessageEvent) => {
     );
 
     // Create output canvas
-    const canvas = new OffscreenCanvas(outputWidth, outputHeight);
-    const ctx = canvas.getContext("2d", {
+    let canvas = new OffscreenCanvas(outputWidth, outputHeight);
+    let ctx = canvas.getContext("2d", {
       willReadFrequently: sharpening,
       alpha: false,
     });
@@ -90,11 +91,11 @@ self.onmessage = async (e: MessageEvent) => {
     // Draw image scaled to target size
     ctx.drawImage(imageBitmap, 0, 0, outputWidth, outputHeight);
 
-    // Apply sharpening only if enabled
+    // Apply sharpening only if enabled (reduced amount)
     if (sharpening) {
-      sendProgress("Optimizing", 40, "Applying AI enhancements...", true);
-      // 10% sharpening using unsharp mask technique (15% for upscaled)
-      applySharpening(ctx, outputWidth, outputHeight, isUpscaling ? 0.15 : 0.1);
+      sendProgress("Optimizing", 40, "Applying enhancements...", true);
+      // 5% sharpening for normal, 8% for upscaled (reduced from 10%/15%)
+      applySharpening(ctx, outputWidth, outputHeight, isUpscaling ? 0.08 : 0.05);
     } else {
       sendProgress("Optimizing", 40, "Processing...", true);
     }
@@ -139,25 +140,92 @@ self.onmessage = async (e: MessageEvent) => {
 
         if (blob.size > MAX_FILE_SIZE) {
           maxQuality = quality;
-        } else if (blob.size < TARGET_FILE_SIZE) {
+        } else if (blob.size < TARGET_MAX_SIZE) {
           minQuality = quality;
         } else {
-          // Perfect! Between 5-6MB
+          // Perfect! Between 5.5-6MB
           break;
         }
 
         // Stop if quality range is narrow enough
         if (maxQuality - minQuality < 0.01) break;
       }
-    } else if (blob.size < TARGET_FILE_SIZE * 0.8) {
-      // File is too small (< 4MB), we want to maximize quality
-      // Keep quality at 1.0 but this is already optimal
-      sendProgress("Optimizing", 70, "Using maximum quality...", true);
-      quality = 1.0;
-      blob = await canvas.convertToBlob({
-        type: "image/jpeg",
-        quality: 1.0,
+    } else if (blob.size < TARGET_MIN_SIZE) {
+      // File is too small (< 4MB), upscale to reach 5-6MB target
+      sendProgress("Optimizing", 70, "Upscaling to target size...", true);
+      
+      // Calculate upscale factor to reach ~5MB
+      // Rough estimate: file size is proportional to pixel count
+      const targetPixels = (TARGET_MAX_SIZE / blob.size) * outputWidth * outputHeight;
+      const upscaleFactor = Math.sqrt(targetPixels / (outputWidth * outputHeight));
+      
+      // Limit upscale factor to 1.5x to avoid over-upscaling
+      const limitedUpscaleFactor = Math.min(upscaleFactor, 1.5);
+      
+      const newWidth = Math.round(outputWidth * limitedUpscaleFactor);
+      const newHeight = Math.round(outputHeight * limitedUpscaleFactor);
+      
+      // Create larger canvas
+      const upscaledCanvas = new OffscreenCanvas(
+        newWidth - (newWidth % 2),
+        newHeight - (newHeight % 2)
+      );
+      const upscaledCtx = upscaledCanvas.getContext("2d", {
+        willReadFrequently: sharpening,
+        alpha: false,
       });
+
+      if (upscaledCtx) {
+        upscaledCtx.imageSmoothingEnabled = true;
+        upscaledCtx.imageSmoothingQuality = "high";
+        upscaledCtx.drawImage(canvas, 0, 0, newWidth, newHeight);
+
+        // Apply light sharpening to upscaled image
+        if (sharpening) {
+          applySharpening(upscaledCtx, newWidth, newHeight, 0.08);
+        }
+
+        // Replace canvas with upscaled version
+        canvas = upscaledCanvas;
+        ctx = upscaledCtx;
+        outputWidth = newWidth;
+        outputHeight = newHeight;
+
+        sendProgress("Optimizing", 80, "Re-encoding upscaled image...", true);
+
+        // Re-encode at max quality
+        blob = await canvas.convertToBlob({
+          type: "image/jpeg",
+          quality: 1.0,
+        });
+
+        // If still too small or too large, adjust quality
+        if (blob.size < TARGET_MIN_SIZE || blob.size > MAX_FILE_SIZE) {
+          let minQuality = 0.8;
+          let maxQuality = 1.0;
+          attempts = 0;
+
+          while (attempts < 10) {
+            attempts++;
+            quality = (minQuality + maxQuality) / 2;
+
+            blob = await canvas.convertToBlob({
+              type: "image/jpeg",
+              quality: quality,
+            });
+
+            if (blob.size > MAX_FILE_SIZE) {
+              maxQuality = quality;
+            } else if (blob.size < TARGET_MIN_SIZE) {
+              minQuality = quality;
+            } else {
+              break;
+            }
+
+            if (maxQuality - minQuality < 0.01) break;
+          }
+        }
+      }
     }
 
     if (!blob) {
@@ -176,12 +244,15 @@ self.onmessage = async (e: MessageEvent) => {
 
     const fileSizeMB = (blob.size / (1024 * 1024)).toFixed(2);
     const qualityPercent = Math.round(quality * 100);
-    const resNote = isUpscaling
-      ? "Enhanced & Upscaled"
-      : isDownscaling
-        ? "Optimized Resolution"
-        : "Maximum Quality";
-    const sharpNote = sharpening ? " | AI Sharpened" : "";
+    const wasUpscaledToTarget = blob.size >= TARGET_MIN_SIZE && file.size < TARGET_MIN_SIZE;
+    const resNote = wasUpscaledToTarget
+      ? "Enhanced & Upscaled to Target"
+      : isUpscaling
+        ? "Enhanced & Upscaled"
+        : isDownscaling
+          ? "Optimized Resolution"
+          : "Maximum Quality";
+    const sharpNote = sharpening ? " | Enhanced" : "";
 
     sendComplete({
       blob,
@@ -206,7 +277,7 @@ self.onmessage = async (e: MessageEvent) => {
  * @param ctx Canvas context
  * @param width Canvas width
  * @param height Canvas height
- * @param amount Sharpening amount (0.1 = 10%, 0.15 = 15%)
+ * @param amount Sharpening amount (0.05 = 5%, 0.08 = 8%)
  */
 function applySharpening(
   ctx: OffscreenCanvasRenderingContext2D,
@@ -266,8 +337,8 @@ function applySharpening(
       );
     }
 
-    // Also apply slight contrast enhancement
-    const contrast = 1.05; // 5% contrast boost
+    // Apply slight contrast enhancement (reduced from 5% to 2%)
+    const contrast = 1.02; // 2% contrast boost (was 1.05)
     const factor = (259 * (contrast * 255 + 255)) / (255 * (259 - contrast * 255));
     for (let i = 0; i < data.length; i += 4) {
       data[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));
