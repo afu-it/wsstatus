@@ -489,8 +489,9 @@ function buildOptimizedFFmpegCommand(
   }
 
   if (plan.needsResize) {
+    // Use bilinear for much faster scaling (lanczos is slower but higher quality)
     filters.push(
-      `scale=${plan.outputWidth}:${plan.outputHeight}:force_original_aspect_ratio=decrease:flags=lanczos`
+      `scale=${plan.outputWidth}:${plan.outputHeight}:force_original_aspect_ratio=decrease:flags=bilinear`
     );
     filters.push(
       `pad=${plan.outputWidth}:${plan.outputHeight}:(ow-iw)/2:(oh-ih)/2`
@@ -525,31 +526,32 @@ function buildOptimizedFFmpegCommand(
     `Duration: ${targetDuration}s, Calculated bitrate: ${targetBitrate}kbps, Using: ${videoBitrate}kbps`
   );
 
+  // Optimized for SPEED - ultrafast preset for 5-10x faster encoding
   args.push(
     "-c:v",
     "libx264",
     "-profile:v",
-    "high",
+    "baseline", // Simpler profile for faster encoding
     "-level",
-    "4.2",
+    "3.1", // Lower level for faster encoding
     "-preset",
-    "veryfast", // MUCH faster encoding (3-5x speed boost)
-    "-b:v",
-    `${videoBitrate}k`,
+    "ultrafast", // FASTEST encoding preset (5-10x speed boost)
+    "-crf",
+    "23", // Use CRF for faster encoding than bitrate mode
     "-maxrate",
-    `${videoBitrate * 1.2}k`, // Allow 20% buffer for quality
+    `${videoBitrate}k`,
     "-bufsize",
-    `${videoBitrate * 2}k`, // Larger buffer for better quality
+    `${videoBitrate}k`,
     "-pix_fmt",
     "yuv420p",
     "-g",
-    "60",
+    "30", // Smaller GOP for faster encoding
     "-keyint_min",
-    "60",
-    "-aspect",
-    `${plan.outputWidth}:${plan.outputHeight}`,
-    "-sar",
-    "1:1"
+    "30",
+    "-x264-params",
+    "ref=1:me=dia:subme=0:trellis=0:weightp=0", // Fastest x264 params
+    "-movflags",
+    "+faststart"
   );
 
   args.push("-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "48000");
