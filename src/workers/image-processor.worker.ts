@@ -26,8 +26,8 @@ self.onmessage = async (e: MessageEvent) => {
   };
 
   const adj = adjustments || {
-    sharpening: 15,
-    hdr: 5,
+    sharpening: 20,
+    hdr: 8,
     upscale: true,
   };
 

@@ -10,8 +10,8 @@ interface ImageEditorProps {
 }
 
 const defaultAdjustments: ImageAdjustments = {
-  sharpening: 15,
-  hdr: 5,
+  sharpening: 20,
+  hdr: 8,
   upscale: true,
 };
 
@@ -65,7 +65,7 @@ export function ImageEditor({ adjustments, onChange }: ImageEditorProps) {
         <input
           type="range"
           min="0"
-          max="10"
+          max="20"
           value={adjustments.hdr}
           onChange={(e) => updateField("hdr", parseInt(e.target.value))}
           className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-primary"
@@ -81,7 +81,7 @@ export function ImageEditor({ adjustments, onChange }: ImageEditorProps) {
         <input
           type="range"
           min="0"
-          max="20"
+          max="30"
           value={adjustments.sharpening}
           onChange={(e) => updateField("sharpening", parseInt(e.target.value))}
           className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-primary"

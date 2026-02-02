@@ -330,43 +330,46 @@ function App() {
   return (
     <div className="min-h-screen mesh-gradient selection:bg-brand-primary/20 transition-colors duration-500 font-sans">
       {/* Compact Top Navigation */}
-      <nav className="fixed top-0 left-0 w-full px-4 py-3 flex justify-between items-center z-40 bg-white/80 backdrop-blur-lg border-b border-gray-100/50">
+      <nav className="fixed top-0 left-0 w-full px-3 sm:px-4 py-2.5 sm:py-3 flex justify-between items-center z-50 bg-white/90 backdrop-blur-lg border-b border-gray-100/50 shadow-sm">
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 px-2.5 py-1 bg-gray-50 rounded-full border border-gray-100">
-            <span className="text-[10px] font-semibold text-gray-500">
+          <div className="flex items-center gap-2 px-2 sm:px-2.5 py-1 bg-gray-50 rounded-full border border-gray-100">
+            <span className="text-[9px] sm:text-[10px] font-semibold text-gray-500">
               v{__APP_VERSION__}
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {/* Show install button if prompt is available but dialog was dismissed */}
           {deferredPrompt && !showInstallDialog && (
             <button
               onClick={() => setShowInstallDialog(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-brand-primary/10 rounded-full border border-brand-primary/20 hover:bg-brand-primary/20 transition-all text-xs font-semibold text-brand-primary"
+              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 bg-brand-primary/10 rounded-full border border-brand-primary/20 hover:bg-brand-primary/20 transition-all text-[11px] sm:text-xs font-semibold text-brand-primary"
             >
               <div className="w-1 h-1 rounded-full bg-brand-primary animate-pulse" />
-              Install
+              <span className="hidden xs:inline sm:inline">Install</span>
+              <span className="inline xs:hidden sm:hidden">+</span>
             </button>
           )}
 
           {isIOS && !isStandalone && (
             <button
               onClick={() => setIsAboutOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-brand-primary/10 rounded-full border border-brand-primary/20 hover:bg-brand-primary/20 transition-all text-xs font-semibold text-brand-primary"
+              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 bg-brand-primary/10 rounded-full border border-brand-primary/20 hover:bg-brand-primary/20 transition-all text-[11px] sm:text-xs font-semibold text-brand-primary"
             >
               <div className="w-1 h-1 rounded-full bg-brand-primary" />
-              Install
+              <span className="hidden xs:inline sm:inline">Install</span>
+              <span className="inline xs:hidden sm:hidden">+</span>
             </button>
           )}
 
           <button
             onClick={() => setIsAboutOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white rounded-full border border-gray-200 hover:border-brand-primary/30 transition-all text-xs font-semibold text-gray-600 hover:text-brand-primary"
+            className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 bg-white rounded-full border border-gray-200 hover:border-brand-primary/30 transition-all text-[11px] sm:text-xs font-semibold text-gray-600 hover:text-brand-primary"
           >
             <div className="w-1 h-1 rounded-full bg-brand-primary" />
-            About
+            <span className="hidden xs:inline sm:inline">About</span>
+            <span className="inline xs:hidden sm:hidden">?</span>
           </button>
         </div>
       </nav>
