@@ -1,10 +1,11 @@
+import { useState } from "react";
 import type { MediaFile } from "@/types";
 import { getPresetForMediaType } from "@/lib/presets";
 import { formatFileSize, formatDuration } from "@/lib/utils";
 
 interface MediaAnalysisProps {
   mediaFile: MediaFile;
-  onOptimize: () => void;
+  onOptimize: (options: { sharpening: boolean }) => void;
   onCancel: () => void;
 }
 
@@ -13,12 +14,18 @@ export function MediaAnalysis({
   onOptimize,
   onCancel,
 }: MediaAnalysisProps) {
+  const [sharpeningEnabled, setSharpeningEnabled] = useState(true);
+  
   const preset = getPresetForMediaType(mediaFile.type);
   const { metadata } = mediaFile;
   const isVideoTooLong =
     mediaFile.type === "video" && metadata?.duration && metadata.duration > 90;
   const isVideoOver30s =
     mediaFile.type === "video" && metadata?.duration && metadata.duration > 30;
+
+  const handleOptimize = () => {
+    onOptimize({ sharpening: sharpeningEnabled });
+  };
 
   return (
     <div className="w-full max-w-xl mx-auto space-y-6">
@@ -137,7 +144,7 @@ export function MediaAnalysis({
             </p>
             {metadata?.duration && metadata.duration > 90 && (
               <p className="text-[8px] font-black text-red-500 uppercase tracking-wide mt-0.5">
-                ⚠ Max 1:30
+                Max 1:30
               </p>
             )}
           </div>
@@ -175,6 +182,58 @@ export function MediaAnalysis({
         </div>
       )}
 
+      {/* Sharpening Toggle Option */}
+      <div className="glass-card rounded-2xl p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-100 to-blue-100 flex items-center justify-center">
+              <svg
+                className="w-5 h-5 text-purple-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-900">AI Sharpening</p>
+              <p className="text-xs text-gray-500">
+                Enhance clarity and details
+              </p>
+            </div>
+          </div>
+          
+          {/* Toggle Switch */}
+          <button
+            onClick={() => setSharpeningEnabled(!sharpeningEnabled)}
+            className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 ${
+              sharpeningEnabled ? "bg-brand-primary" : "bg-gray-200"
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform duration-200 ${
+                sharpeningEnabled ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
+          </button>
+        </div>
+        
+        {sharpeningEnabled && (
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <p className="text-[10px] text-gray-400 leading-relaxed">
+              Applies 10% unsharp mask to enhance edges and details. 
+              Especially effective for upscaled low-resolution media.
+            </p>
+          </div>
+        )}
+      </div>
+
       {/* Compact Preset Card */}
       <div
         className={`glass-card rounded-3xl p-5 space-y-3 ${
@@ -201,7 +260,7 @@ export function MediaAnalysis({
 
       {/* Compact Action Button */}
       <button
-        onClick={onOptimize}
+        onClick={handleOptimize}
         disabled={!!isVideoTooLong}
         className={`w-full btn-primary group ${
           isVideoTooLong ? "bg-gray-300 pointer-events-none" : ""
@@ -228,7 +287,7 @@ export function MediaAnalysis({
       </button>
 
       <p className="text-center text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
-        100% Private • On-Device Processing
+        100% Private - On-Device Processing
       </p>
     </div>
   );

@@ -13,7 +13,7 @@ const TARGET_SHORT_EDGE = 1080;
 const TARGET_LONG_EDGE = 1920;
 
 self.onmessage = async (e: MessageEvent) => {
-  const { file } = e.data as { file: File; preset: Preset };
+  const { file, sharpening = true } = e.data as { file: File; preset: Preset; sharpening?: boolean };
   lastSentProgress = 0;
   lastProgressTime = 0;
 
@@ -64,7 +64,7 @@ self.onmessage = async (e: MessageEvent) => {
       "Optimizing",
       25,
       isUpscaling
-        ? "Upscaling image with sharpening..."
+        ? sharpening ? "Upscaling image with sharpening..." : "Upscaling image..."
         : isDownscaling
           ? "Resizing image..."
           : "Processing image...",
@@ -74,7 +74,7 @@ self.onmessage = async (e: MessageEvent) => {
     // Create output canvas
     const canvas = new OffscreenCanvas(outputWidth, outputHeight);
     const ctx = canvas.getContext("2d", {
-      willReadFrequently: true,
+      willReadFrequently: sharpening, // Only need frequent reads if sharpening
       alpha: false,
     });
 
@@ -89,11 +89,14 @@ self.onmessage = async (e: MessageEvent) => {
     // Draw image scaled to target size
     ctx.drawImage(imageBitmap, 0, 0, outputWidth, outputHeight);
 
-    sendProgress("Optimizing", 40, "Applying enhancements...", true);
-
-    // Apply sharpening (especially important for upscaled images)
-    // 10% sharpening using unsharp mask technique
-    applySharpening(ctx, outputWidth, outputHeight, isUpscaling ? 0.15 : 0.1);
+    // Apply sharpening only if enabled
+    if (sharpening) {
+      sendProgress("Optimizing", 40, "Applying enhancements...", true);
+      // 10% sharpening using unsharp mask technique (15% for upscaled)
+      applySharpening(ctx, outputWidth, outputHeight, isUpscaling ? 0.15 : 0.1);
+    } else {
+      sendProgress("Optimizing", 40, "Processing...", true);
+    }
 
     sendProgress("Optimizing", 55, "Compressing...", true);
 
@@ -180,6 +183,7 @@ self.onmessage = async (e: MessageEvent) => {
       : isDownscaling
         ? "Resized"
         : "Optimized";
+    const sharpNote = sharpening ? " | Sharpened" : "";
 
     sendComplete({
       blob,
@@ -190,7 +194,7 @@ self.onmessage = async (e: MessageEvent) => {
         processingTime: 0,
         optimizationApplied: true,
         threadingMode: "canvas-optimized",
-        notes: `${fileSizeMB}MB | Quality: ${qualityPercent}% | ${resNote} | Sharpened`,
+        notes: `${fileSizeMB}MB | Quality: ${qualityPercent}% | ${resNote}${sharpNote}`,
       },
     });
   } catch (error) {

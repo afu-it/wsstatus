@@ -9,7 +9,7 @@ let lastProgressTime = 0;
 const PROGRESS_THROTTLE_MS = 100;
 
 self.onmessage = async (e: MessageEvent) => {
-  const { file, preset } = e.data as { file: File; preset: Preset };
+  const { file, preset, sharpening = true } = e.data as { file: File; preset: Preset; sharpening?: boolean };
   const config = preset.config as VideoConfig;
   lastSentProgress = 0;
   lastProgressTime = 0;
@@ -90,7 +90,8 @@ self.onmessage = async (e: MessageEvent) => {
         outputName,
         config,
         processingPlan,
-        videoInfo
+        videoInfo,
+        sharpening
       );
     }
 
@@ -351,14 +352,16 @@ async function processFullQuality(
   outputName: string,
   config: VideoConfig,
   plan: ProcessingPlan,
-  info: VideoInfo
+  info: VideoInfo,
+  sharpening: boolean = true
 ) {
   const ffmpegArgs = buildOptimizedFFmpegCommand(
     inputName,
     outputName,
     config,
     plan,
-    info
+    info,
+    sharpening
   );
 
   const totalDuration = plan.targetDuration || info.duration || 1;
@@ -412,7 +415,8 @@ function buildOptimizedFFmpegCommand(
   output: string,
   _config: VideoConfig,
   plan: ProcessingPlan,
-  info: VideoInfo
+  info: VideoInfo,
+  sharpening: boolean = true
 ): string[] {
   const args: string[] = ["-threads", "1", "-noautorotate", "-i", input];
 
@@ -444,8 +448,10 @@ function buildOptimizedFFmpegCommand(
     filters.push("fps=30");
   }
 
-  // Add 10% sharpening to all videos
-  filters.push("unsharp=5:5:0.5:5:5:0.0");
+  // Add 10% sharpening only if enabled
+  if (sharpening) {
+    filters.push("unsharp=5:5:0.5:5:5:0.0");
+  }
 
   if (plan.needsResize) {
     filters.push(
