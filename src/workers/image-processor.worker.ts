@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import type { WorkerMessage, Preset, ImageConfig } from "@/types";
+import type { WorkerMessage, Preset } from "@/types";
 
 let lastSentProgress = 0;
 let lastProgressTime = 0;
