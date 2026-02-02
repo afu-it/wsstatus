@@ -19,24 +19,12 @@ self.onmessage = async (e: MessageEvent) => {
     file: File;
     adjustments?: {
       sharpening: number;
-      contrast: number;
-      blackPoint: number;
-      shadows: number;
-      hdr: number;
-      vibrant: number;
-      saturation: number;
       upscale: boolean;
     };
   };
 
   const adj = adjustments || {
-    sharpening: 15,
-    contrast: 5,
-    blackPoint: 5,
-    shadows: 5,
-    hdr: 5,
-    vibrant: 5,
-    saturation: 5,
+    sharpening: 8,
     upscale: true,
   };
 
@@ -115,24 +103,10 @@ self.onmessage = async (e: MessageEvent) => {
     // Draw image scaled to target size
     ctx.drawImage(imageBitmap, 0, 0, outputWidth, outputHeight);
 
-    sendProgress("Optimizing", 40, "Applying adjustments...", true);
+    sendProgress("Optimizing", 40, "Applying sharpening...", true);
 
     // Apply sharpening
     applySharpening(ctx, outputWidth, outputHeight, adj.sharpening / 100);
-
-    // Apply HDR
-    applyHDR(ctx, outputWidth, outputHeight, adj.hdr / 100);
-
-    // Apply Vibrant
-    applyVibrant(ctx, outputWidth, outputHeight, adj.vibrant / 100);
-
-    // Apply Saturation
-    applyBasicSaturation(ctx, outputWidth, outputHeight, adj.saturation / 100);
-
-    // Apply basic color adjustments
-    applyContrast(ctx, outputWidth, outputHeight, adj.contrast / 100);
-    applyBlackPoint(ctx, outputWidth, outputHeight, adj.blackPoint / 100);
-    applyShadows(ctx, outputWidth, outputHeight, adj.shadows / 100);
 
     sendProgress("Optimizing", 55, "Encoding...", true);
 
@@ -143,34 +117,32 @@ self.onmessage = async (e: MessageEvent) => {
       quality: quality,
     });
 
-    // If file is less than 4MB, upscale to reach at least 4MB
+    // If file is less than 4MB, just upscale the image without re-processing
     if (adj.upscale && blob.size < TARGET_MIN_SIZE) {
-      sendProgress("Optimizing", 70, "Upscaling for better quality...", true);
+      sendProgress("Optimizing", 70, "Upscaling...", true);
       
       // Calculate upscale factor to reach at least 4MB
       const targetPixels = (TARGET_MAX_SIZE / blob.size) * outputWidth * outputHeight;
       const upscaleFactor = Math.sqrt(targetPixels / (outputWidth * outputHeight));
       
-      // Allow up to 2x upscale for small files
+      // Allow up to 2x upscale
       const limitedUpscaleFactor = Math.min(upscaleFactor, 2.0);
       
       const newWidth = Math.round(outputWidth * limitedUpscaleFactor);
       const newHeight = Math.round(outputHeight * limitedUpscaleFactor);
       
-      // Create larger canvas
+      // Create larger canvas and just upscale (no re-processing)
       const upscaledCanvas = new OffscreenCanvas(
         newWidth - (newWidth % 2),
         newHeight - (newHeight % 2)
       );
       const upscaledCtx = upscaledCanvas.getContext("2d", {
         alpha: false,
-        willReadFrequently: true,
       });
 
       if (upscaledCtx) {
         upscaledCtx.imageSmoothingEnabled = true;
         upscaledCtx.imageSmoothingQuality = "high";
-        // Just upscale the already-adjusted image
         upscaledCtx.drawImage(canvas, 0, 0, newWidth, newHeight);
 
         // Re-encode at max quality
@@ -303,200 +275,5 @@ function applySharpening(
     ctx.putImageData(imageData, 0, 0);
   } catch (e) {
     console.warn("Sharpening failed:", e);
-  }
-}
-
-/**
- * Apply contrast boost (10%)
- */
-function applyContrast(
-  ctx: OffscreenCanvasRenderingContext2D,
-  width: number,
-  height: number,
-  amount: number
-): void {
-  try {
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const data = imageData.data;
-    const factor = (259 * (amount * 255 + 255)) / (255 * (259 - amount * 255));
-
-    for (let i = 0; i < data.length; i += 4) {
-      data[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));
-      data[i + 1] = Math.min(255, Math.max(0, factor * (data[i + 1] - 128) + 128));
-      data[i + 2] = Math.min(255, Math.max(0, factor * (data[i + 2] - 128) + 128));
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-  } catch (e) {
-    console.warn("Contrast adjustment failed:", e);
-  }
-}
-
-/**
- * Apply black point adjustment (8%)
- */
-function applyBlackPoint(
-  ctx: OffscreenCanvasRenderingContext2D,
-  width: number,
-  height: number,
-  amount: number
-): void {
-  try {
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const data = imageData.data;
-    const offset = amount * 255;
-
-    for (let i = 0; i < data.length; i += 4) {
-      data[i] = Math.min(255, Math.max(0, data[i] + offset));
-      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + offset));
-      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + offset));
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-  } catch (e) {
-    console.warn("Black point adjustment failed:", e);
-  }
-}
-
-/**
- * Apply shadows adjustment (-10% = lift shadows)
- */
-function applyShadows(
-  ctx: OffscreenCanvasRenderingContext2D,
-  width: number,
-  height: number,
-  amount: number
-): void {
-  try {
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const data = imageData.data;
-    const threshold = 80;
-    const factor = 1 + amount;
-
-    for (let i = 0; i < data.length; i += 4) {
-      const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
-      if (brightness < threshold) {
-        data[i] = Math.min(255, Math.max(0, data[i] * factor));
-        data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor));
-        data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor));
-      }
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-  } catch (e) {
-    console.warn("Shadows adjustment failed:", e);
-  }
-}
-
-/**
- * HDR effect - enhances local contrast and brightness
- */
-function applyHDR(
-  ctx: OffscreenCanvasRenderingContext2D,
-  width: number,
-  height: number,
-  amount: number
-): void {
-  try {
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const data = imageData.data;
-
-    const blurData = new Uint8ClampedArray(data);
-    const blurRadius = 3;
-    for (let y = blurRadius; y < height - blurRadius; y++) {
-      for (let x = blurRadius; x < width - blurRadius; x++) {
-        const idx = (y * width + x) * 4;
-        let r = 0, g = 0, b = 0, count = 0;
-
-        for (let dy = -blurRadius; dy <= blurRadius; dy++) {
-          for (let dx = -blurRadius; dx <= blurRadius; dx++) {
-            const nIdx = ((y + dy) * width + (x + dx)) * 4;
-            r += data[nIdx];
-            g += data[nIdx + 1];
-            b += data[nIdx + 2];
-            count++;
-          }
-        }
-
-        blurData[idx] = r / count;
-        blurData[idx + 1] = g / count;
-        blurData[idx + 2] = b / count;
-      }
-    }
-
-    const factor = 1 + amount;
-    for (let i = 0; i < data.length; i += 4) {
-      const detailR = data[i] - blurData[i];
-      const detailG = data[i + 1] - blurData[i + 1];
-      const detailB = data[i + 2] - blurData[i + 2];
-
-      data[i] = Math.min(255, Math.max(0, data[i] + detailR * factor));
-      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + detailG * factor));
-      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + detailB * factor));
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-  } catch (e) {
-    console.warn("HDR adjustment failed:", e);
-  }
-}
-
-/**
- * Vibrant - selective saturation boost for unsaturated colors
- */
-function applyVibrant(
-  ctx: OffscreenCanvasRenderingContext2D,
-  width: number,
-  height: number,
-  amount: number
-): void {
-  try {
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const data = imageData.data;
-
-    for (let i = 0; i < data.length; i += 4) {
-      const max = Math.max(data[i], data[i + 1], data[i + 2]);
-      const min = Math.min(data[i], data[i + 1], data[i + 2]);
-      const saturation = max - min;
-
-      if (saturation > 0 && saturation < 60) {
-        const gray = 0.2989 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-        const factor = 1 + amount * 2;
-        data[i] = Math.min(255, Math.max(0, gray + factor * (data[i] - gray)));
-        data[i + 1] = Math.min(255, Math.max(0, gray + factor * (data[i + 1] - gray)));
-        data[i + 2] = Math.min(255, Math.max(0, gray + factor * (data[i + 2] - gray)));
-      }
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-  } catch (e) {
-    console.warn("Vibrant adjustment failed:", e);
-  }
-}
-
-/**
- * Basic Saturation adjustment
- */
-function applyBasicSaturation(
-  ctx: OffscreenCanvasRenderingContext2D,
-  width: number,
-  height: number,
-  amount: number
-): void {
-  try {
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const data = imageData.data;
-    const factor = 1 + amount;
-
-    for (let i = 0; i < data.length; i += 4) {
-      const gray = 0.2989 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-      data[i] = Math.min(255, Math.max(0, gray + factor * (data[i] - gray)));
-      data[i + 1] = Math.min(255, Math.max(0, gray + factor * (data[i + 1] - gray)));
-      data[i + 2] = Math.min(255, Math.max(0, gray + factor * (data[i + 2] - gray)));
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-  } catch (e) {
-    console.warn("Saturation adjustment failed:", e);
   }
 }

@@ -140,7 +140,7 @@ function App() {
     setStage("analysis");
   };
 
-  const handleOptimize = async (adjustments?: { sharpening: number; contrast: number; blackPoint: number; shadows: number; hdr: number; vibrant: number; saturation: number; upscale: boolean }) => {
+  const handleOptimize = async (adjustments?: { sharpening: number; upscale: boolean }) => {
     if (!mediaFile) return;
 
     setStage("processing");
@@ -196,13 +196,7 @@ function App() {
           file: mediaFile.file,
           preset,
           adjustments: adjustments || {
-            sharpening: 15,
-            contrast: 5,
-            blackPoint: 5,
-            shadows: 5,
-            hdr: 5,
-            vibrant: 5,
-            saturation: 5,
+            sharpening: 8,
             upscale: true,
           },
         });
