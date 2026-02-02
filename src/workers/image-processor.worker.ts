@@ -17,8 +17,7 @@ const WHATSAPP_LANDSCAPE_HEIGHT = 1080;
 const JPEG_QUALITY = 0.87;
 
 self.onmessage = async (e: MessageEvent) => {
-  const { file, preset } = e.data as { file: File; preset: Preset };
-  const config = preset.config as ImageConfig;
+  const { file } = e.data as { file: File; preset: Preset };
   lastSentProgress = 0;
   lastProgressTime = 0;
 
