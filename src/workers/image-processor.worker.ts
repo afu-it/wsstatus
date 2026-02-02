@@ -15,13 +15,14 @@ const TARGET_SHORT_EDGE = 1080;
 const TARGET_LONG_EDGE = 1920;
 
 self.onmessage = async (e: MessageEvent) => {
-  const { file, adjustments } = e.data as {
+  const { file, adjustments, preview } = e.data as {
     file: File;
     adjustments?: {
       sharpening: number;
       hdr: number;
       upscale: boolean;
     };
+    preview?: boolean;
   };
 
   const adj = adjustments || {
@@ -34,29 +35,41 @@ self.onmessage = async (e: MessageEvent) => {
   lastProgressTime = 0;
 
   try {
-    sendProgress("Initializing", 5, "Loading image...", true);
-
     // Load image using OffscreenCanvas (more memory efficient than FFmpeg)
     const imageBitmap = await createImageBitmap(file);
-
-    sendProgress("Analyzing", 15, "Analyzing image...", true);
 
     const origWidth = imageBitmap.width;
     const origHeight = imageBitmap.height;
     const isPortrait = origHeight > origWidth;
 
-    // Determine target dimensions
+    // For preview mode, use smaller dimensions for faster processing
     let targetWidth: number;
     let targetHeight: number;
 
-    if (isPortrait) {
-      // Portrait: width=1080, height=1920
-      targetWidth = TARGET_SHORT_EDGE;
-      targetHeight = TARGET_LONG_EDGE;
+    if (preview) {
+      // Preview: smaller dimensions for speed (max 800px)
+      const maxPreviewSize = 800;
+      if (isPortrait) {
+        targetWidth = Math.min(maxPreviewSize, origWidth);
+        targetHeight = Math.min((maxPreviewSize * 16) / 9, origHeight);
+      } else {
+        targetWidth = Math.min((maxPreviewSize * 16) / 9, origWidth);
+        targetHeight = Math.min(maxPreviewSize, origHeight);
+      }
     } else {
-      // Landscape: width=1920, height=1080
-      targetWidth = TARGET_LONG_EDGE;
-      targetHeight = TARGET_SHORT_EDGE;
+      sendProgress("Initializing", 5, "Loading image...", true);
+      sendProgress("Analyzing", 15, "Analyzing image...", true);
+
+      // Full optimization: use target dimensions
+      if (isPortrait) {
+        // Portrait: width=1080, height=1920
+        targetWidth = TARGET_SHORT_EDGE;
+        targetHeight = TARGET_LONG_EDGE;
+      } else {
+        // Landscape: width=1920, height=1080
+        targetWidth = TARGET_LONG_EDGE;
+        targetHeight = TARGET_SHORT_EDGE;
+      }
     }
 
     // Calculate scale to fit within target dimensions while maintaining aspect ratio
@@ -76,16 +89,18 @@ self.onmessage = async (e: MessageEvent) => {
     const isUpscaling = scale > 1;
     const isDownscaling = scale < 1;
 
-    sendProgress(
-      "Optimizing",
-      25,
-      isUpscaling
-        ? "Upscaling image..."
-        : isDownscaling
-          ? "Optimizing resolution..."
-          : "Processing image...",
-      true
-    );
+    if (!preview) {
+      sendProgress(
+        "Optimizing",
+        25,
+        isUpscaling
+          ? "Upscaling image..."
+          : isDownscaling
+            ? "Optimizing resolution..."
+            : "Processing image...",
+        true
+      );
+    }
 
     // Create output canvas
     const canvas = new OffscreenCanvas(outputWidth, outputHeight);
@@ -105,15 +120,29 @@ self.onmessage = async (e: MessageEvent) => {
     // Draw image scaled to target size
     ctx.drawImage(imageBitmap, 0, 0, outputWidth, outputHeight);
 
-    sendProgress("Optimizing", 40, "Applying sharpening...", true);
+    if (!preview) {
+      sendProgress("Optimizing", 40, "Applying sharpening...", true);
+    }
 
     // Apply sharpening
     applySharpening(ctx, outputWidth, outputHeight, adj.sharpening / 100);
 
-    sendProgress("Optimizing", 45, "Applying HDR...", true);
+    if (!preview) {
+      sendProgress("Optimizing", 45, "Applying HDR...", true);
+    }
 
     // Apply HDR
     applyHDR(ctx, outputWidth, outputHeight, adj.hdr / 100);
+
+    // If preview mode, send preview and return
+    if (preview) {
+      const previewBlob = await canvas.convertToBlob({
+        type: "image/jpeg",
+        quality: 0.9,
+      });
+      sendPreview(previewBlob);
+      return;
+    }
 
     sendProgress("Optimizing", 55, "Encoding...", true);
 
@@ -227,6 +256,10 @@ function sendProgress(
 
 function sendComplete(result: unknown) {
   self.postMessage({ type: "complete", payload: result } as WorkerMessage);
+}
+
+function sendPreview(blob: Blob) {
+  self.postMessage({ type: "preview", payload: { blob } } as WorkerMessage);
 }
 
 function sendError(error: unknown) {

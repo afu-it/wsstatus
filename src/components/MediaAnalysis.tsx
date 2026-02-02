@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { MediaFile } from "@/types";
 import { getPresetForMediaType } from "@/lib/presets";
 import { formatFileSize, formatDuration } from "@/lib/utils";
@@ -23,6 +23,9 @@ export function MediaAnalysis({
 }: MediaAnalysisProps) {
   const [adjustments, setAdjustments] = useState<ImageAdjustments>(defaultAdjustments);
   const [showEditor, setShowEditor] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string>("");
+  const workerRef = useRef<Worker | null>(null);
+  const debounceTimerRef = useRef<number | null>(null);
 
   const preset = getPresetForMediaType(mediaFile.type);
   const { metadata } = mediaFile;
@@ -30,6 +33,65 @@ export function MediaAnalysis({
     mediaFile.type === "video" && metadata?.duration && metadata.duration > 90;
   const isVideoOver30s =
     mediaFile.type === "video" && metadata?.duration && metadata.duration > 30;
+
+  // Generate preview when adjustments change (for images only)
+  useEffect(() => {
+    if (mediaFile.type !== "image") return;
+
+    // Clear previous timer
+    if (debounceTimerRef.current) {
+      window.clearTimeout(debounceTimerRef.current);
+    }
+
+    // Debounce preview generation (500ms)
+    debounceTimerRef.current = window.setTimeout(async () => {
+      try {
+        // Create worker if not exists
+        if (!workerRef.current) {
+          const ImageWorker = await import("@/workers/image-processor.worker?worker");
+          workerRef.current = new ImageWorker.default();
+
+          workerRef.current.onmessage = (e: MessageEvent) => {
+            const { type, payload } = e.data;
+            if (type === "preview") {
+              const url = URL.createObjectURL(payload.blob);
+              setPreviewUrl((prev) => {
+                if (prev) URL.revokeObjectURL(prev);
+                return url;
+              });
+            }
+          };
+        }
+
+        // Request preview
+        workerRef.current.postMessage({
+          file: mediaFile.file,
+          adjustments,
+          preview: true,
+        });
+      } catch (error) {
+        console.error("Preview generation error:", error);
+      }
+    }, 500);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [adjustments, mediaFile]);
+
+  // Cleanup worker and preview URL on unmount
+  useEffect(() => {
+    return () => {
+      if (workerRef.current) {
+        workerRef.current.terminate();
+      }
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   const handleOptimize = () => {
     if (mediaFile.type === "image") {
@@ -191,6 +253,22 @@ export function MediaAnalysis({
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Image Preview (for images only) */}
+      {mediaFile.type === "image" && (
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <img
+            src={previewUrl || mediaFile.preview}
+            alt="Preview"
+            className="w-full h-auto"
+          />
+          {!previewUrl && (
+            <div className="p-2 text-center text-xs text-gray-500">
+              Loading preview...
+            </div>
+          )}
         </div>
       )}
 
