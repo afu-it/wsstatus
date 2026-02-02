@@ -98,6 +98,11 @@ self.onmessage = async (e: MessageEvent) => {
     // Reduce highlights by 10%
     reduceHighlights(ctx, outputWidth, outputHeight, 0.10);
 
+    // Apply color adjustments
+    applyContrast(ctx, outputWidth, outputHeight, 0.10);
+    applyBlackPoint(ctx, outputWidth, outputHeight, 0.08);
+    applyShadows(ctx, outputWidth, outputHeight, -0.10);
+
     sendProgress("Optimizing", 55, "Encoding with maximum quality...", true);
 
     // Encode at maximum quality
@@ -140,6 +145,11 @@ self.onmessage = async (e: MessageEvent) => {
 
         // Reduce highlights by 10%
         reduceHighlights(upscaledCtx, newWidth, newHeight, 0.10);
+
+        // Apply color adjustments
+        applyContrast(upscaledCtx, newWidth, newHeight, 0.10);
+        applyBlackPoint(upscaledCtx, newWidth, newHeight, 0.08);
+        applyShadows(upscaledCtx, newWidth, newHeight, -0.10);
 
         // Re-encode at max quality
         blob = await upscaledCanvas.convertToBlob({
@@ -301,5 +311,87 @@ function reduceHighlights(
     ctx.putImageData(imageData, 0, 0);
   } catch (e) {
     console.warn("Highlights reduction failed:", e);
+  }
+}
+
+/**
+ * Apply contrast boost (10%)
+ */
+function applyContrast(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const factor = (259 * (amount * 255 + 255)) / (255 * (259 - amount * 255));
+
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));
+      data[i + 1] = Math.min(255, Math.max(0, factor * (data[i + 1] - 128) + 128));
+      data[i + 2] = Math.min(255, Math.max(0, factor * (data[i + 2] - 128) + 128));
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    console.warn("Contrast adjustment failed:", e);
+  }
+}
+
+/**
+ * Apply black point adjustment (8%)
+ */
+function applyBlackPoint(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const offset = amount * 255;
+
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.min(255, Math.max(0, data[i] + offset));
+      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + offset));
+      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + offset));
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    console.warn("Black point adjustment failed:", e);
+  }
+}
+
+/**
+ * Apply shadows adjustment (-10% = lift shadows)
+ */
+function applyShadows(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const threshold = 80;
+    const factor = 1 + amount;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      if (brightness < threshold) {
+        data[i] = Math.min(255, Math.max(0, data[i] * factor));
+        data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor));
+        data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor));
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    console.warn("Shadows adjustment failed:", e);
   }
 }
