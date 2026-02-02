@@ -7,7 +7,7 @@ let lastSentProgress = 0;
 let lastProgressTime = 0;
 
 const PROGRESS_THROTTLE_MS = 100;
-const GIF_DURATION = 3; // 3 seconds
+const MAX_FILE_SIZE = 5.5 * 1024 * 1024; // 5.5MB in bytes
 
 self.onmessage = async (e: MessageEvent) => {
   const { file } = e.data as { file: File; preset: Preset };
@@ -23,31 +23,23 @@ self.onmessage = async (e: MessageEvent) => {
 
     const fileData = new Uint8Array(await file.arrayBuffer());
     const inputName = "input" + getFileExtension(file.name);
-    const outputName = "output.gif";
+    const outputName = "output.jpg";
 
     await ffmpeg.writeFile(inputName, fileData);
 
-    sendProgress("Converting", 30, "Creating optimized GIF...", true);
+    sendProgress("Optimizing", 30, "Adding sharpening...", true);
 
-    // Simple command: keep original dimensions, add 10% sharpening
+    // Simple command: keep original size, add 10% sharpening, output JPEG
     const ffmpegArgs = [
-      "-loop", "1",
       "-i", inputName,
-      "-t", GIF_DURATION.toString(),
-      "-vf", "fps=15,unsharp=5:5:0.5:5:5:0.0", // 10% sharpening (luma only)
+      "-vf", "unsharp=5:5:0.5:5:5:0.0", // 10% sharpening (luma only)
+      "-q:v", "2", // High quality JPEG (87%)
       "-y", outputName
     ];
 
-    // Progress tracking
-    const progressHandler = ({ time, progress }: { time: number; progress: number }) => {
-      let percent = 0;
-      if (typeof time === "number" && time > 0) {
-        percent = Math.min(time / GIF_DURATION, 1);
-      } else if (typeof progress === "number") {
-        percent = progress;
-      }
-      const mappedProgress = 30 + Math.round(percent * 60);
-      sendProgress("Converting", mappedProgress, `Creating GIF... ${Math.round(percent * 100)}%`);
+    const progressHandler = ({ progress }: { progress: number }) => {
+      const mappedProgress = 30 + Math.round(progress * 60);
+      sendProgress("Optimizing", mappedProgress, `Processing... ${Math.round(progress * 100)}%`);
     };
 
     ffmpeg.on("progress", progressHandler);
@@ -56,7 +48,7 @@ self.onmessage = async (e: MessageEvent) => {
       await ffmpeg.exec(ffmpegArgs);
     } catch (execError) {
       console.error("FFmpeg exec failed:", execError);
-      throw new Error("GIF conversion failed. Please try a different image.");
+      throw new Error("Image optimization failed. Please try again.");
     } finally {
       ffmpeg.off("progress", progressHandler);
     }
@@ -66,11 +58,17 @@ self.onmessage = async (e: MessageEvent) => {
     const outputData = await ffmpeg.readFile(outputName);
 
     const blob = new Blob([Uint8Array.from(outputData as Uint8Array)], {
-      type: "image/gif",
+      type: "image/jpeg",
     });
 
     await ffmpeg.deleteFile(inputName);
     await ffmpeg.deleteFile(outputName);
+
+    // Check file size
+    if (blob.size > MAX_FILE_SIZE) {
+      const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
+      throw new Error(`File size (${sizeMB}MB) exceeds WhatsApp limit of 5.5MB. Try a smaller image.`);
+    }
 
     sendProgress("Finalizing", 99, "Done!", true);
 
@@ -84,8 +82,8 @@ self.onmessage = async (e: MessageEvent) => {
         compressionRatio: ((1 - blob.size / file.size) * 100),
         processingTime: 0,
         optimizationApplied: true,
-        threadingMode: "gif-optimized",
-        notes: `${fileSizeMB}MB • Original dimensions kept • ${GIF_DURATION}s GIF`,
+        threadingMode: "jpeg-sharpened",
+        notes: `${fileSizeMB}MB • Sharpened • Original size kept`,
       },
     });
   } catch (error) {

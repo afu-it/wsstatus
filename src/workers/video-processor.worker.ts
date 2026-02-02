@@ -111,6 +111,13 @@ self.onmessage = async (e: MessageEvent) => {
     await ffmpeg.deleteFile(inputName);
     await ffmpeg.deleteFile(outputName);
 
+    // Check file size
+    const MAX_FILE_SIZE = 5.5 * 1024 * 1024; // 5.5MB
+    if (blob.size > MAX_FILE_SIZE) {
+      const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
+      throw new Error(`File size (${sizeMB}MB) exceeds WhatsApp limit of 5.5MB. Try a shorter video or lower quality.`);
+    }
+
     sendComplete({
       blob,
       metadata: {
@@ -415,6 +422,9 @@ function buildOptimizedFFmpegCommand(
   if (plan.needsFpsConversion || info.fps > 30) {
     filters.push("fps=30");
   }
+
+  // Add 10% sharpening to all videos
+  filters.push("unsharp=5:5:0.5:5:5:0.0");
 
   if (plan.needsResize) {
     filters.push(
