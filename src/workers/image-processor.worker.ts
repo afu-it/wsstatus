@@ -90,7 +90,10 @@ self.onmessage = async (e: MessageEvent) => {
     // Draw image scaled to target size
     ctx.drawImage(imageBitmap, 0, 0, outputWidth, outputHeight);
 
-    sendProgress("Optimizing", 40, "Processing...", true);
+    sendProgress("Optimizing", 40, "Applying light sharpening...", true);
+
+    // Apply very light sharpening (2%)
+    applySharpening(ctx, outputWidth, outputHeight, 0.02);
 
     sendProgress("Optimizing", 55, "Encoding with maximum quality...", true);
 
@@ -124,10 +127,13 @@ self.onmessage = async (e: MessageEvent) => {
         alpha: false,
       });
 
-      if (upscaledCtx) {
+        if (upscaledCtx) {
         upscaledCtx.imageSmoothingEnabled = true;
         upscaledCtx.imageSmoothingQuality = "high";
         upscaledCtx.drawImage(canvas, 0, 0, newWidth, newHeight);
+
+        // Apply light sharpening to upscaled image
+        applySharpening(upscaledCtx, newWidth, newHeight, 0.02);
 
         // Re-encode at max quality
         blob = await upscaledCanvas.convertToBlob({
@@ -211,4 +217,53 @@ function sendError(error: unknown) {
     type: "error",
     payload: error instanceof Error ? error : new Error(String(error)),
   } as WorkerMessage);
+}
+
+/**
+ * Apply very light sharpening using unsharp mask technique (2%)
+ */
+function applySharpening(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const blurData = new Uint8ClampedArray(data);
+
+    const blurRadius = 1;
+    for (let y = blurRadius; y < height - blurRadius; y++) {
+      for (let x = blurRadius; x < width - blurRadius; x++) {
+        const idx = (y * width + x) * 4;
+        let r = 0, g = 0, b = 0, count = 0;
+
+        for (let dy = -blurRadius; dy <= blurRadius; dy++) {
+          for (let dx = -blurRadius; dx <= blurRadius; dx++) {
+            const nIdx = ((y + dy) * width + (x + dx)) * 4;
+            r += data[nIdx];
+            g += data[nIdx + 1];
+            b += data[nIdx + 2];
+            count++;
+          }
+        }
+
+        blurData[idx] = r / count;
+        blurData[idx + 1] = g / count;
+        blurData[idx + 2] = b / count;
+      }
+    }
+
+    const sharpenFactor = 1 + amount;
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.min(255, Math.max(0, data[i] * sharpenFactor - blurData[i] * amount));
+      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * sharpenFactor - blurData[i + 1] * amount));
+      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * sharpenFactor - blurData[i + 2] * amount));
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    console.warn("Sharpening failed:", e);
+  }
 }
