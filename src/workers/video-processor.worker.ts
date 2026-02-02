@@ -256,9 +256,25 @@ function determineProcessingPlan(
 ): ProcessingPlan {
   const targetFps = 30;
 
-  // KEEP ORIGINAL DIMENSIONS - no resizing
-  const outputWidth = info.effectiveWidth;
-  const outputHeight = info.effectiveHeight;
+  // Target 1080p resolution
+  const isPortrait = info.effectiveWidth < info.effectiveHeight;
+  
+  let targetWidth: number;
+  let targetHeight: number;
+  let needsResize: boolean;
+
+  if (isPortrait) {
+    // Portrait: 1080 x 1920
+    targetWidth = 1080;
+    targetHeight = 1920;
+  } else {
+    // Landscape: 1920 x 1080
+    targetWidth = 1920;
+    targetHeight = 1080;
+  }
+
+  // Check if we need to resize
+  needsResize = (info.effectiveWidth !== targetWidth || info.effectiveHeight !== targetHeight);
 
   const isOptimalFps = info.fps <= targetFps;
   const isOptimalDuration = info.duration <= 90;
@@ -267,6 +283,7 @@ function determineProcessingPlan(
   const hasSquarePixels = Math.abs(info.sar - 1) < 0.01;
 
   const skipProcessing =
+    !needsResize &&
     isOptimalFps &&
     isOptimalDuration &&
     isReasonableBitrate &&
@@ -280,10 +297,10 @@ function determineProcessingPlan(
 
   return {
     skipProcessing,
-    needsResize: false, // Never resize - keep original
+    needsResize,
     needsFpsConversion,
-    outputWidth,
-    outputHeight,
+    outputWidth: targetWidth,
+    outputHeight: targetHeight,
     targetDuration,
     trimRequired,
     rotation: info.rotation,
@@ -454,13 +471,13 @@ function buildOptimizedFFmpegCommand(
     "-level",
     "4.2",
     "-preset",
-    "veryfast",
-    "-crf",
-    "23",
+    "medium", // Better quality than veryfast
+    "-b:v",
+    "6000k", // 6Mbps bitrate
     "-maxrate",
-    "4000k",
-    "-bufsize",
     "6000k",
+    "-bufsize",
+    "9000k",
     "-pix_fmt",
     "yuv420p",
     "-g",
