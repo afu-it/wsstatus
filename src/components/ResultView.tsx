@@ -186,27 +186,42 @@ export function ResultView({
         </div>
       </div>
 
-      {/* Compact Guide */}
-      <div className="glass-card rounded-2xl p-4">
-        <div className="flex items-center gap-1.5 text-[9px] font-bold text-gray-400 uppercase tracking-wide mb-3">
-          <span className="w-1 h-1 rounded-full bg-gray-300" />
-          Quick Guide
+      {/* HD Quality Trick Guide */}
+      <div className="glass-card rounded-2xl p-4 bg-blue-50/50 border-2 border-blue-200">
+        <div className="flex items-center gap-1.5 text-[9px] font-bold text-blue-600 uppercase tracking-wide mb-3">
+          <span className="w-1 h-1 rounded-full bg-blue-400" />
+          HD Quality Trick (IMPORTANT!)
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { tag: "01", text: "Save file" },
-            { tag: "02", text: "Open WhatsApp" },
-            { tag: "03", text: "Upload" },
-          ].map((step, i) => (
-            <div key={i} className="space-y-1">
-              <span className="text-[9px] font-black text-brand-primary">
-                {step.tag}
-              </span>
-              <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide">
-                {step.text}
-              </p>
-            </div>
-          ))}
+        <div className="space-y-2">
+          <div className="flex items-start gap-2">
+            <span className="text-xs font-black text-blue-600 min-w-[20px]">1.</span>
+            <p className="text-xs font-semibold text-gray-700">
+              Send the GIF to <strong>yourself</strong> in WhatsApp
+            </p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-xs font-black text-blue-600 min-w-[20px]">2.</span>
+            <p className="text-xs font-semibold text-gray-700">
+              <strong>Open</strong> the GIF (tap to view full screen)
+            </p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-xs font-black text-blue-600 min-w-[20px]">3.</span>
+            <p className="text-xs font-semibold text-gray-700">
+              Tap <strong>3 dots (⋮)</strong> in top right corner
+            </p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-xs font-black text-blue-600 min-w-[20px]">4.</span>
+            <p className="text-xs font-semibold text-gray-700">
+              Select <strong>Share → Status</strong>
+            </p>
+          </div>
+          <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <p className="text-[10px] font-bold text-yellow-800">
+              ⚠️ DON'T use "Forward to Status" - it compresses quality!
+            </p>
+          </div>
         </div>
       </div>
 

@@ -14,8 +14,8 @@ const WHATSAPP_PORTRAIT_HEIGHT = 1920;
 const WHATSAPP_LANDSCAPE_WIDTH = 1920;
 const WHATSAPP_LANDSCAPE_HEIGHT = 1080;
 
-// Video duration for images
-const IMAGE_VIDEO_DURATION = 5;
+// GIF duration (short loop)
+const GIF_DURATION = 3;
 
 self.onmessage = async (e: MessageEvent) => {
   const { file } = e.data as { file: File; preset: Preset };
@@ -31,7 +31,7 @@ self.onmessage = async (e: MessageEvent) => {
 
     const fileData = new Uint8Array(await file.arrayBuffer());
     const inputName = "input" + getFileExtension(file.name);
-    const outputName = "output.mp4";
+    const outputName = "output.gif";
 
     await ffmpeg.writeFile(inputName, fileData);
 
@@ -46,26 +46,21 @@ self.onmessage = async (e: MessageEvent) => {
       imageInfo = { width: 1920, height: 1080 };
     }
 
-    sendProgress("Planning", 20, "Converting to HD video...", true);
+    sendProgress("Planning", 20, "Optimizing for WhatsApp...", true);
 
     // Determine orientation
     const isPortrait = imageInfo.height > imageInfo.width;
     const targetWidth = isPortrait ? WHATSAPP_PORTRAIT_WIDTH : WHATSAPP_LANDSCAPE_WIDTH;
     const targetHeight = isPortrait ? WHATSAPP_PORTRAIT_HEIGHT : WHATSAPP_LANDSCAPE_HEIGHT;
 
-    sendProgress("Converting", 30, "Creating HD video...", true);
+    sendProgress("Converting", 30, "Creating optimized GIF...", true);
 
-    // Simple, reliable FFmpeg command
+    // Build FFmpeg command for high-quality GIF
     const ffmpegArgs = [
       "-loop", "1",
       "-i", inputName,
-      "-t", IMAGE_VIDEO_DURATION.toString(),
-      "-vf", `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight}`,
-      "-c:v", "libx264",
-      "-preset", "fast",
-      "-crf", "23",
-      "-pix_fmt", "yuv420p",
-      "-an",
+      "-t", GIF_DURATION.toString(),
+      "-vf", `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight},fps=10`,
       "-y", outputName
     ];
 
@@ -73,12 +68,12 @@ self.onmessage = async (e: MessageEvent) => {
     const progressHandler = ({ time, progress }: { time: number; progress: number }) => {
       let percent = 0;
       if (typeof time === "number" && time > 0) {
-        percent = Math.min(time / IMAGE_VIDEO_DURATION, 1);
+        percent = Math.min(time / GIF_DURATION, 1);
       } else if (typeof progress === "number") {
         percent = progress;
       }
       const mappedProgress = 30 + Math.round(percent * 60);
-      sendProgress("Converting", mappedProgress, `Processing... ${Math.round(percent * 100)}%`);
+      sendProgress("Converting", mappedProgress, `Creating GIF... ${Math.round(percent * 100)}%`);
     };
 
     ffmpeg.on("progress", progressHandler);
@@ -87,7 +82,7 @@ self.onmessage = async (e: MessageEvent) => {
       await ffmpeg.exec(ffmpegArgs);
     } catch (execError) {
       console.error("FFmpeg exec failed:", execError);
-      throw new Error("Video conversion failed. Please try a different image.");
+      throw new Error("GIF conversion failed. Please try a different image.");
     } finally {
       ffmpeg.off("progress", progressHandler);
     }
@@ -97,7 +92,7 @@ self.onmessage = async (e: MessageEvent) => {
     const outputData = await ffmpeg.readFile(outputName);
 
     const blob = new Blob([Uint8Array.from(outputData as Uint8Array)], {
-      type: "video/mp4",
+      type: "image/gif",
     });
 
     await ffmpeg.deleteFile(inputName);
@@ -113,7 +108,7 @@ self.onmessage = async (e: MessageEvent) => {
         compressionRatio: ((1 - blob.size / file.size) * 100),
         processingTime: 0,
         optimizationApplied: true,
-        threadingMode: "ffmpeg-hd-video",
+        threadingMode: "ffmpeg-gif",
       },
     });
   } catch (error) {
