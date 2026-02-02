@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import type { WorkerMessage, Preset } from "@/types";
+import type { WorkerMessage } from "@/types";
 
 let lastSentProgress = 0;
 let lastProgressTime = 0;
@@ -15,7 +15,27 @@ const TARGET_SHORT_EDGE = 1080;
 const TARGET_LONG_EDGE = 1920;
 
 self.onmessage = async (e: MessageEvent) => {
-  const { file } = e.data as { file: File; preset: Preset };
+  const { file, adjustments } = e.data as {
+    file: File;
+    adjustments?: {
+      sharpening: number;
+      highlights: number;
+      contrast: number;
+      blackPoint: number;
+      shadows: number;
+      upscale: boolean;
+    };
+  };
+
+  const adj = adjustments || {
+    sharpening: 8,
+    highlights: 5,
+    contrast: 10,
+    blackPoint: 8,
+    shadows: -10,
+    upscale: true,
+  };
+
   lastSentProgress = 0;
   lastProgressTime = 0;
 
@@ -92,16 +112,16 @@ self.onmessage = async (e: MessageEvent) => {
 
     sendProgress("Optimizing", 40, "Applying light sharpening...", true);
 
-    // Apply 8% sharpening
-    applySharpening(ctx, outputWidth, outputHeight, 0.08);
+    // Apply sharpening
+    applySharpening(ctx, outputWidth, outputHeight, adj.sharpening / 100);
 
-    // Reduce highlights by 5%
-    reduceHighlights(ctx, outputWidth, outputHeight, 0.05);
+    // Reduce highlights
+    reduceHighlights(ctx, outputWidth, outputHeight, adj.highlights / 100);
 
     // Apply color adjustments
-    applyContrast(ctx, outputWidth, outputHeight, 0.10);
-    applyBlackPoint(ctx, outputWidth, outputHeight, 0.08);
-    applyShadows(ctx, outputWidth, outputHeight, -0.10);
+    applyContrast(ctx, outputWidth, outputHeight, adj.contrast / 100);
+    applyBlackPoint(ctx, outputWidth, outputHeight, adj.blackPoint / 100);
+    applyShadows(ctx, outputWidth, outputHeight, adj.shadows / 100);
 
     sendProgress("Optimizing", 55, "Encoding with maximum quality...", true);
 
@@ -113,7 +133,7 @@ self.onmessage = async (e: MessageEvent) => {
     });
 
     // If file is less than 4MB (0-3MB range), upscale to reach at least 4MB
-    if (blob.size < TARGET_MIN_SIZE) {
+    if (adj.upscale && blob.size < TARGET_MIN_SIZE) {
       sendProgress("Optimizing", 70, "Upscaling for better quality...", true);
       
       // Calculate upscale factor to reach at least 4MB
@@ -135,21 +155,17 @@ self.onmessage = async (e: MessageEvent) => {
         alpha: false,
       });
 
-        if (upscaledCtx) {
+      if (upscaledCtx) {
         upscaledCtx.imageSmoothingEnabled = true;
         upscaledCtx.imageSmoothingQuality = "high";
         upscaledCtx.drawImage(canvas, 0, 0, newWidth, newHeight);
 
-        // Apply 8% sharpening to upscaled image
-        applySharpening(upscaledCtx, newWidth, newHeight, 0.08);
-
-        // Reduce highlights by 5%
-        reduceHighlights(upscaledCtx, newWidth, newHeight, 0.05);
-
-        // Apply color adjustments
-        applyContrast(upscaledCtx, newWidth, newHeight, 0.10);
-        applyBlackPoint(upscaledCtx, newWidth, newHeight, 0.08);
-        applyShadows(upscaledCtx, newWidth, newHeight, -0.10);
+        // Apply adjustments to upscaled image
+        applySharpening(upscaledCtx, newWidth, newHeight, adj.sharpening / 100);
+        reduceHighlights(upscaledCtx, newWidth, newHeight, adj.highlights / 100);
+        applyContrast(upscaledCtx, newWidth, newHeight, adj.contrast / 100);
+        applyBlackPoint(upscaledCtx, newWidth, newHeight, adj.blackPoint / 100);
+        applyShadows(upscaledCtx, newWidth, newHeight, adj.shadows / 100);
 
         // Re-encode at max quality
         blob = await upscaledCanvas.convertToBlob({

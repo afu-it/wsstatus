@@ -1,18 +1,32 @@
+import { useState } from "react";
 import type { MediaFile } from "@/types";
 import { getPresetForMediaType } from "@/lib/presets";
 import { formatFileSize, formatDuration } from "@/lib/utils";
+import { ImageEditor, type ImageAdjustments } from "./ImageEditor";
 
 interface MediaAnalysisProps {
   mediaFile: MediaFile;
-  onOptimize: () => void;
+  onOptimize: (adjustments?: ImageAdjustments) => void;
   onCancel: () => void;
 }
+
+const defaultAdjustments: ImageAdjustments = {
+  sharpening: 8,
+  highlights: 5,
+  contrast: 10,
+  blackPoint: 8,
+  shadows: -10,
+  upscale: true,
+};
 
 export function MediaAnalysis({
   mediaFile,
   onOptimize,
   onCancel,
 }: MediaAnalysisProps) {
+  const [adjustments, setAdjustments] = useState<ImageAdjustments>(defaultAdjustments);
+  const [showEditor, setShowEditor] = useState(false);
+
   const preset = getPresetForMediaType(mediaFile.type);
   const { metadata } = mediaFile;
   const isVideoTooLong =
@@ -21,7 +35,11 @@ export function MediaAnalysis({
     mediaFile.type === "video" && metadata?.duration && metadata.duration > 30;
 
   const handleOptimize = () => {
-    onOptimize();
+    if (mediaFile.type === "image") {
+      onOptimize(adjustments);
+    } else {
+      onOptimize();
+    }
   };
 
   return (
@@ -179,7 +197,47 @@ export function MediaAnalysis({
         </div>
       )}
 
+      {/* Image Editor Toggle */}
+      {mediaFile.type === "image" && (
+        <div>
+          <button
+            onClick={() => setShowEditor(!showEditor)}
+            className="w-full flex items-center justify-between glass-card rounded-2xl p-4 transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <svg
+                className="w-5 h-5 text-brand-primary"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
+                />
+              </svg>
+              <span className="text-sm font-bold text-gray-900">Image Adjustments</span>
+            </div>
+            <svg
+              className={`w-5 h-5 text-gray-400 transition-transform ${showEditor ? "rotate-180" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
 
+          {showEditor && (
+            <div className="mt-4">
+              <ImageEditor adjustments={adjustments} onChange={setAdjustments} />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Compact Preset Card */}
       <div
