@@ -7,7 +7,7 @@ let lastSentProgress = 0;
 let lastProgressTime = 0;
 
 const PROGRESS_THROTTLE_MS = 100;
-const MAX_FILE_SIZE = 5.5 * 1024 * 1024; // 5.5MB in bytes
+const MAX_FILE_SIZE = 6 * 1024 * 1024; // 6MB in bytes (strict limit)
 
 self.onmessage = async (e: MessageEvent) => {
   const { file } = e.data as { file: File; preset: Preset };
@@ -29,61 +29,114 @@ self.onmessage = async (e: MessageEvent) => {
 
     sendProgress("Optimizing", 30, "Adding sharpening...", true);
 
-    // Simple command: keep original size, add 10% sharpening, output JPEG
-    const ffmpegArgs = [
-      "-i", inputName,
-      "-vf", "unsharp=5:5:0.5:5:5:0.0", // 10% sharpening (luma only)
-      "-q:v", "2", // High quality JPEG (87%)
-      "-y", outputName
-    ];
+    // Try different quality levels to ensure we stay under 6MB
+    let blob: Blob | null = null;
+    let quality = 2; // Start with high quality (q:v 2 = ~87%)
+    const maxQuality = 2;
+    const minQuality = 10; // q:v 10 = ~60%
+    let attempts = 0;
+    const maxAttempts = 5;
 
-    const progressHandler = ({ progress }: { progress: number }) => {
-      const mappedProgress = 30 + Math.round(progress * 60);
-      sendProgress("Optimizing", mappedProgress, `Processing... ${Math.round(progress * 100)}%`);
-    };
+    while (attempts < maxAttempts) {
+      attempts++;
 
-    ffmpeg.on("progress", progressHandler);
+      // Simple command: keep original size, add 10% sharpening, output JPEG
+      const ffmpegArgs = [
+        "-i",
+        inputName,
+        "-vf",
+        "unsharp=5:5:0.5:5:5:0.0", // 10% sharpening (luma only)
+        "-q:v",
+        quality.toString(),
+        "-y",
+        outputName,
+      ];
 
-    try {
-      await ffmpeg.exec(ffmpegArgs);
-    } catch (execError) {
-      console.error("FFmpeg exec failed:", execError);
-      throw new Error("Image optimization failed. Please try again.");
-    } finally {
-      ffmpeg.off("progress", progressHandler);
+      const progressHandler = ({ progress }: { progress: number }) => {
+        const mappedProgress = 30 + Math.round(progress * 60);
+        sendProgress(
+          "Optimizing",
+          mappedProgress,
+          `Processing... ${Math.round(progress * 100)}%`
+        );
+      };
+
+      ffmpeg.on("progress", progressHandler);
+
+      try {
+        await ffmpeg.exec(ffmpegArgs);
+      } catch (execError) {
+        console.error("FFmpeg exec failed:", execError);
+        throw new Error("Image optimization failed. Please try again.");
+      } finally {
+        ffmpeg.off("progress", progressHandler);
+      }
+
+      sendProgress("Finalizing", 92, "Reading result...", true);
+
+      const outputData = await ffmpeg.readFile(outputName);
+
+      blob = new Blob([Uint8Array.from(outputData as Uint8Array)], {
+        type: "image/jpeg",
+      });
+
+      // Check if size is acceptable
+      if (blob.size <= MAX_FILE_SIZE) {
+        // Success! Size is within limit
+        break;
+      } else if (quality >= minQuality) {
+        // File too large, try lower quality
+        const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
+        console.log(
+          `Attempt ${attempts}: File size ${sizeMB}MB exceeds 6MB limit. Reducing quality...`
+        );
+        quality += 2; // Increase q:v value = lower quality
+        sendProgress(
+          "Optimizing",
+          50,
+          `Reducing quality to fit 6MB limit...`,
+          true
+        );
+      } else {
+        // Can't reduce quality further
+        const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
+        throw new Error(
+          `Image too large (${sizeMB}MB) even at lowest quality. Please use a smaller resolution image.`
+        );
+      }
     }
 
-    sendProgress("Finalizing", 92, "Reading result...", true);
-
-    const outputData = await ffmpeg.readFile(outputName);
-
-    const blob = new Blob([Uint8Array.from(outputData as Uint8Array)], {
-      type: "image/jpeg",
-    });
+    if (!blob) {
+      throw new Error("Failed to process image");
+    }
 
     await ffmpeg.deleteFile(inputName);
     await ffmpeg.deleteFile(outputName);
 
-    // Check file size
+    // Final size check
     if (blob.size > MAX_FILE_SIZE) {
       const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
-      throw new Error(`File size (${sizeMB}MB) exceeds WhatsApp limit of 5.5MB. Try a smaller image.`);
+      throw new Error(
+        `File size (${sizeMB}MB) exceeds 6MB limit. Try a smaller image.`
+      );
     }
 
     sendProgress("Finalizing", 99, "Done!", true);
 
     const fileSizeMB = (blob.size / (1024 * 1024)).toFixed(2);
+    const qualityNote =
+      quality > maxQuality ? ` • Quality reduced to fit 6MB` : "";
 
     sendComplete({
       blob,
       metadata: {
         originalSize: file.size,
         optimizedSize: blob.size,
-        compressionRatio: ((1 - blob.size / file.size) * 100),
+        compressionRatio: (1 - blob.size / file.size) * 100,
         processingTime: 0,
         optimizationApplied: true,
         threadingMode: "jpeg-sharpened",
-        notes: `${fileSizeMB}MB • Sharpened • Original size kept`,
+        notes: `${fileSizeMB}MB • Sharpened${qualityNote}`,
       },
     });
   } catch (error) {
@@ -97,7 +150,12 @@ function getFileExtension(filename: string): string {
   return parts.length > 1 ? "." + parts[parts.length - 1] : ".jpg";
 }
 
-function sendProgress(stage: string, progress: number, message: string, force = false) {
+function sendProgress(
+  stage: string,
+  progress: number,
+  message: string,
+  force = false
+) {
   const now = Date.now();
   if (!force && now - lastProgressTime < PROGRESS_THROTTLE_MS) return;
 

@@ -1,7 +1,12 @@
 import { useCallback, useState } from "react";
 import { detectMediaType } from "@/lib/presets";
 import type { MediaFile } from "@/types";
-import { getImageMetadata, getVideoMetadata } from "@/lib/utils";
+import {
+  getImageMetadata,
+  getVideoMetadata,
+  checkImageQuality,
+  checkVideoQuality,
+} from "@/lib/utils";
 
 interface UploadZoneProps {
   onFileSelect: (mediaFile: MediaFile) => void;
@@ -10,10 +15,12 @@ interface UploadZoneProps {
 export function UploadZone({ onFileSelect }: UploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
 
   const handleFile = useCallback(
     async (file: File) => {
       setError(null);
+      setWarnings([]);
 
       const mediaType = detectMediaType(file);
 
@@ -22,12 +29,53 @@ export function UploadZone({ onFileSelect }: UploadZoneProps) {
         return;
       }
 
+      // Pre-check file size (Output limit is 6MB, but warn for >10MB source files)
+      const MAX_RECOMMENDED_SIZE = 10 * 1024 * 1024; // 10MB
+      const MAX_OUTPUT_SIZE = 6 * 1024 * 1024; // 6MB
+
+      if (file.size > MAX_RECOMMENDED_SIZE) {
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+        setWarnings((prev) => [
+          ...prev,
+          `⚠️ Large file (${sizeMB}MB). Processing may take longer or fail.`,
+        ]);
+      }
+
       try {
         let metadata;
+        let qualityCheck: {
+          isGoodQuality: boolean;
+          reason?: string;
+          warnings: string[];
+        } | null = null;
 
         if (mediaType === "image") {
           const { width, height } = await getImageMetadata(file);
           metadata = { width, height, format: file.type, size: file.size };
+
+          // Check image quality
+          qualityCheck = await checkImageQuality(file);
+
+          if (
+            qualityCheck &&
+            !qualityCheck.isGoodQuality &&
+            qualityCheck.reason
+          ) {
+            setError(qualityCheck.reason);
+            return;
+          }
+
+          if (qualityCheck && qualityCheck.warnings.length > 0) {
+            setWarnings((prev) => [...prev, ...qualityCheck!.warnings]);
+          }
+
+          // Check if output might exceed 6MB limit
+          if (file.size > MAX_OUTPUT_SIZE * 0.8) {
+            setWarnings((prev) => [
+              ...prev,
+              "⚠️ File is close to 6MB limit. Quality may be reduced to fit.",
+            ]);
+          }
         } else {
           const { width, height, duration } = await getVideoMetadata(file);
           metadata = {
@@ -37,6 +85,22 @@ export function UploadZone({ onFileSelect }: UploadZoneProps) {
             format: file.type,
             size: file.size,
           };
+
+          // Check video quality
+          qualityCheck = await checkVideoQuality(file);
+
+          if (
+            qualityCheck &&
+            !qualityCheck.isGoodQuality &&
+            qualityCheck.reason
+          ) {
+            setError(qualityCheck.reason);
+            return;
+          }
+
+          if (qualityCheck && qualityCheck.warnings.length > 0) {
+            setWarnings((prev) => [...prev, ...qualityCheck!.warnings]);
+          }
         }
 
         onFileSelect({ file, type: mediaType, metadata });
@@ -169,6 +233,20 @@ export function UploadZone({ onFileSelect }: UploadZoneProps) {
       {error && (
         <div className="mt-4 p-3 rounded-2xl bg-red-50 border border-red-100 text-red-600 text-sm font-medium text-center">
           ⚠️ {error}
+        </div>
+      )}
+
+      {/* Warnings */}
+      {warnings.length > 0 && (
+        <div className="mt-4 space-y-2">
+          {warnings.map((warning, idx) => (
+            <div
+              key={idx}
+              className="p-2.5 rounded-xl bg-yellow-50 border border-yellow-100 text-yellow-700 text-xs font-medium"
+            >
+              {warning}
+            </div>
+          ))}
         </div>
       )}
     </div>

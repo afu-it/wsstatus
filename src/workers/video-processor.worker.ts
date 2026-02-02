@@ -112,10 +112,12 @@ self.onmessage = async (e: MessageEvent) => {
     await ffmpeg.deleteFile(outputName);
 
     // Check file size
-    const MAX_FILE_SIZE = 5.5 * 1024 * 1024; // 5.5MB
+    const MAX_FILE_SIZE = 6 * 1024 * 1024; // 6MB
     if (blob.size > MAX_FILE_SIZE) {
       const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
-      throw new Error(`File size (${sizeMB}MB) exceeds WhatsApp limit of 5.5MB. Try a shorter video or lower quality.`);
+      throw new Error(
+        `File size (${sizeMB}MB) exceeds 6MB limit. Try a shorter video.`
+      );
     }
 
     sendComplete({
@@ -258,7 +260,7 @@ function determineProcessingPlan(
 
   // Target 1080p resolution
   const isPortrait = info.effectiveWidth < info.effectiveHeight;
-  
+
   let targetWidth: number;
   let targetHeight: number;
   let needsResize: boolean;
@@ -274,7 +276,9 @@ function determineProcessingPlan(
   }
 
   // Check if we need to resize
-  needsResize = (info.effectiveWidth !== targetWidth || info.effectiveHeight !== targetHeight);
+  needsResize =
+    info.effectiveWidth !== targetWidth ||
+    info.effectiveHeight !== targetHeight;
 
   const isOptimalFps = info.fps <= targetFps;
   const isOptimalDuration = info.duration <= 90;
@@ -463,6 +467,24 @@ function buildOptimizedFFmpegCommand(
     args.push("-vf", filters.join(","));
   }
 
+  // Calculate optimal bitrate to stay under 6MB
+  // File size = (video bitrate + audio bitrate) * duration / 8
+  // 6MB = 6 * 1024 * 1024 bytes = 6291456 bytes
+  // Target: 5.5MB to leave safety margin = 5767168 bytes
+  const targetDuration = plan.targetDuration || info.duration || 30;
+  const audioBitrate = 128; // kbps (fixed)
+  const targetFileSizeBytes = 5.5 * 1024 * 1024; // 5.5MB safety margin
+  const targetBitrate = Math.floor(
+    (targetFileSizeBytes * 8) / targetDuration / 1000 - audioBitrate
+  ); // in kbps
+
+  // Cap bitrate between 2000k and 6000k
+  const videoBitrate = Math.max(2000, Math.min(6000, targetBitrate));
+
+  console.log(
+    `Duration: ${targetDuration}s, Calculated bitrate: ${targetBitrate}kbps, Using: ${videoBitrate}kbps`
+  );
+
   args.push(
     "-c:v",
     "libx264",
@@ -473,11 +495,11 @@ function buildOptimizedFFmpegCommand(
     "-preset",
     "medium", // Better quality than veryfast
     "-b:v",
-    "6000k", // 6Mbps bitrate
+    `${videoBitrate}k`,
     "-maxrate",
-    "6000k",
+    `${videoBitrate}k`,
     "-bufsize",
-    "9000k",
+    `${videoBitrate * 1.5}k`,
     "-pix_fmt",
     "yuv420p",
     "-g",

@@ -194,16 +194,22 @@ export function ResultView({
         </div>
         <div className="space-y-2.5">
           <div className="flex items-start gap-2">
-            <span className="text-sm font-black text-green-600 min-w-[22px]">1.</span>
+            <span className="text-sm font-black text-green-600 min-w-[22px]">
+              1.
+            </span>
             <p className="text-xs font-semibold text-gray-800">
               Send to <strong>yourself</strong> in WhatsApp
             </p>
           </div>
           <div className="flex items-start gap-2 bg-yellow-50 border-2 border-yellow-400 rounded-lg p-2.5">
-            <span className="text-sm font-black text-yellow-700 min-w-[22px]">2.</span>
+            <span className="text-sm font-black text-yellow-700 min-w-[22px]">
+              2.
+            </span>
             <div>
               <p className="text-xs font-bold text-yellow-900 mb-1">
-                ⚡ Choose <strong className="bg-yellow-200 px-1 rounded">"HD"</strong> when sending!
+                ⚡ Choose{" "}
+                <strong className="bg-yellow-200 px-1 rounded">"HD"</strong>{" "}
+                when sending!
               </p>
               <p className="text-[10px] text-yellow-800">
                 WhatsApp shows HD toggle - always select it for best quality
@@ -211,9 +217,12 @@ export function ResultView({
             </div>
           </div>
           <div className="flex items-start gap-2">
-            <span className="text-sm font-black text-green-600 min-w-[22px]">3.</span>
+            <span className="text-sm font-black text-green-600 min-w-[22px]">
+              3.
+            </span>
             <p className="text-xs font-semibold text-gray-800">
-              Open the image/video → <strong>3 dots (⋮)</strong> → Share → <strong>My Status</strong>
+              Open the image/video → <strong>3 dots (⋮)</strong> → Share →{" "}
+              <strong>My Status</strong>
             </p>
           </div>
           <div className="mt-3 p-2 bg-green-50 border border-green-300 rounded-lg text-center">
