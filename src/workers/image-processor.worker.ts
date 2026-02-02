@@ -1,6 +1,5 @@
 /// <reference lib="webworker" />
 
-import { getFFmpeg } from "@/lib/ffmpeg-loader";
 import type { WorkerMessage, Preset, ImageConfig } from "@/types";
 
 let lastSentProgress = 0;
@@ -15,308 +14,102 @@ self.onmessage = async (e: MessageEvent) => {
   lastProgressTime = 0;
 
   try {
-    sendProgress("Initializing", 5, "Loading FFmpeg...", true);
+    sendProgress("Initializing", 5, "Loading image...", true);
 
-    const ffmpeg = await getFFmpeg();
+    // Load image
+    const bitmap = await createImageBitmap(file);
+    
+    sendProgress("Analyzing", 15, "Analyzing image properties...", true);
 
-    sendProgress("Analyzing", 10, "Analyzing image properties...", true);
+    const originalWidth = bitmap.width;
+    const originalHeight = bitmap.height;
 
-    const fileData = new Uint8Array(await file.arrayBuffer());
-    const inputName = "input" + getFileExtension(file.name);
-    const outputName = "output.jpg";
+    // Determine target dimensions
+    const maxDimension = config.maxDimension || 1920;
+    const isPortrait = originalWidth < originalHeight;
 
-    await ffmpeg.writeFile(inputName, fileData);
+    const PORTRAIT_MAX_WIDTH = Math.min(maxDimension, 1080);
+    const PORTRAIT_MAX_HEIGHT = Math.min(maxDimension, 1920);
+    const LANDSCAPE_MAX_WIDTH = Math.min(maxDimension, 1920);
+    const LANDSCAPE_MAX_HEIGHT = Math.min(maxDimension, 1080);
 
-    sendProgress("Analyzing", 12, "Probing image metadata...", true);
+    let maxWidth: number;
+    let maxHeight: number;
 
-    // Probe image to get dimensions
-    let imageInfo: ImageInfo;
-    try {
-      imageInfo = await probeImage(ffmpeg, inputName);
-    } catch (error) {
-      console.error("❌ Probe failed:", error);
-      console.warn("⚠️ Using default image parameters");
-      imageInfo = {
-        width: 1920,
-        height: 1080,
-        rotation: 0,
-      };
+    if (isPortrait) {
+      maxWidth = PORTRAIT_MAX_WIDTH;
+      maxHeight = PORTRAIT_MAX_HEIGHT;
+    } else {
+      maxWidth = LANDSCAPE_MAX_WIDTH;
+      maxHeight = LANDSCAPE_MAX_HEIGHT;
     }
 
-    sendProgress("Planning", 15, "Calculating optimal settings...", true);
+    sendProgress("Planning", 25, "Calculating optimal dimensions...", true);
 
-    const processingPlan = determineProcessingPlan(imageInfo, config);
+    // Calculate output dimensions
+    let outputWidth: number;
+    let outputHeight: number;
 
-    sendProgress("Optimizing", 20, "Optimizing image for WhatsApp...", true);
+    if (originalWidth <= maxWidth && originalHeight <= maxHeight) {
+      // No resize needed
+      outputWidth = originalWidth;
+      outputHeight = originalHeight;
+    } else {
+      // Scale down proportionally
+      const scaleRatio = Math.min(
+        maxWidth / originalWidth,
+        maxHeight / originalHeight
+      );
+      outputWidth = Math.round(originalWidth * scaleRatio);
+      outputHeight = Math.round(originalHeight * scaleRatio);
+    }
 
-    await optimizeImage(
-      ffmpeg,
-      inputName,
-      outputName,
-      processingPlan,
-      imageInfo
-    );
+    sendProgress("Optimizing", 40, "Resizing and optimizing...", true);
 
-    sendProgress("Finalizing", 93, "Analyzing optimized image...", true);
-    sendProgress("Finalizing", 96, "Reading output file...", true);
+    // Create canvas
+    const canvas = new OffscreenCanvas(outputWidth, outputHeight);
+    const ctx = canvas.getContext("2d");
 
-    const outputData = await ffmpeg.readFile(outputName);
+    if (!ctx) {
+      throw new Error("Failed to get canvas context");
+    }
 
-    sendProgress("Finalizing", 98, "Generating blob...", true);
+    // Draw image with high quality
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bitmap, 0, 0, outputWidth, outputHeight);
 
-    const blob = new Blob([Uint8Array.from(outputData as Uint8Array)], {
+    sendProgress("Finalizing", 70, "Generating optimized JPEG...", true);
+
+    // Convert to JPEG blob
+    const blob = await canvas.convertToBlob({
       type: "image/jpeg",
+      quality: 0.92, // High quality (0-1 scale)
     });
 
-    sendProgress("Finalizing", 99, "Preparing result...", true);
+    sendProgress("Finalizing", 95, "Preparing result...", true);
 
-    await ffmpeg.deleteFile(inputName);
-    await ffmpeg.deleteFile(outputName);
+    // Clean up
+    bitmap.close();
+
+    sendProgress("Finalizing", 99, "Complete!", true);
 
     sendComplete({
       blob,
       metadata: {
         originalSize: file.size,
         optimizedSize: blob.size,
-        compressionRatio: (1 - blob.size / file.size) * 100,
+        compressionRatio: ((1 - blob.size / file.size) * 100),
         processingTime: 0,
         optimizationApplied: true,
-        threadingMode: "single-threaded",
+        threadingMode: "canvas",
       },
     });
   } catch (error) {
-    console.error("❌ FFmpeg processing error:", error);
+    console.error("❌ Image processing error:", error);
     sendError(error);
   }
 };
-
-interface ImageInfo {
-  width: number;
-  height: number;
-  rotation: number;
-}
-
-interface ProcessingPlan {
-  needsResize: boolean;
-  outputWidth: number;
-  outputHeight: number;
-  rotation: number;
-  needsRotation: boolean;
-}
-
-async function probeImage(
-  ffmpeg: import("@ffmpeg/ffmpeg").FFmpeg,
-  inputName: string
-): Promise<ImageInfo> {
-  let logOutput = "";
-
-  const logHandler = ({ message }: { message: string }) => {
-    logOutput += message + "\n";
-  };
-  ffmpeg.on("log", logHandler);
-
-  try {
-    await ffmpeg.exec(["-threads", "1", "-i", inputName, "-f", "null", "-"]);
-  } catch (probeError) {
-    // FFmpeg "fails" on probe but we capture logs
-    console.log("Probe exec returned (expected):", probeError);
-  } finally {
-    ffmpeg.off("log", logHandler);
-  }
-
-  if (!logOutput || logOutput.length < 50) {
-    throw new Error("Probe produced insufficient output - file may be invalid");
-  }
-
-  const info = parseFFmpegLogs(logOutput);
-  return info;
-}
-
-function parseFFmpegLogs(logs: string): ImageInfo {
-  const resMatch = logs.match(/(\d{3,5})x(\d{3,5})/);
-  const width = resMatch ? parseInt(resMatch[1]) : 1920;
-  const height = resMatch ? parseInt(resMatch[2]) : 1080;
-
-  const rotationMatch = logs.match(
-    /rotat(?:e|ion)\s*(?:of)?\s*:\s*([-]?\d+(?:\.\d+)?)/i
-  );
-  const rotation = rotationMatch ? parseFloat(rotationMatch[1]) : 0;
-
-  return {
-    width,
-    height,
-    rotation,
-  };
-}
-
-function determineProcessingPlan(
-  info: ImageInfo,
-  config: ImageConfig
-): ProcessingPlan {
-  // Use maxDimension from config, or default to WhatsApp limits
-  const maxDimension = config.maxDimension || 1920;
-
-  // Determine if portrait or landscape
-  const isPortrait = info.width < info.height;
-
-  // Define max dimensions based on orientation
-  const PORTRAIT_MAX_WIDTH = Math.min(maxDimension, 1080);
-  const PORTRAIT_MAX_HEIGHT = Math.min(maxDimension, 1920);
-  const LANDSCAPE_MAX_WIDTH = Math.min(maxDimension, 1920);
-  const LANDSCAPE_MAX_HEIGHT = Math.min(maxDimension, 1080);
-
-  let maxWidth: number;
-  let maxHeight: number;
-
-  if (isPortrait) {
-    maxWidth = PORTRAIT_MAX_WIDTH;
-    maxHeight = PORTRAIT_MAX_HEIGHT;
-  } else {
-    maxWidth = LANDSCAPE_MAX_WIDTH;
-    maxHeight = LANDSCAPE_MAX_HEIGHT;
-  }
-
-  const needsRotation = info.rotation !== 0;
-
-  // Calculate output dimensions
-  let outputWidth: number;
-  let outputHeight: number;
-  let needsResize = true;
-
-  if (info.width === maxWidth && info.height === maxHeight) {
-    // Already at max resolution
-    needsResize = false;
-    outputWidth = info.width;
-    outputHeight = info.height;
-  } else if (info.width <= maxWidth && info.height <= maxHeight) {
-    // Within limits, no resize needed
-    needsResize = false;
-    outputWidth = info.width;
-    outputHeight = info.height;
-  } else {
-    // Scale down proportionally
-    const scaleRatio = Math.min(maxWidth / info.width, maxHeight / info.height);
-    outputWidth = Math.round((info.width * scaleRatio) / 2) * 2;
-    outputHeight = Math.round((info.height * scaleRatio) / 2) * 2;
-  }
-
-  return {
-    needsResize,
-    outputWidth,
-    outputHeight,
-    rotation: info.rotation,
-    needsRotation,
-  };
-}
-
-async function optimizeImage(
-  ffmpeg: import("@ffmpeg/ffmpeg").FFmpeg,
-  inputName: string,
-  outputName: string,
-  plan: ProcessingPlan,
-  info: ImageInfo
-) {
-  const ffmpegArgs = buildImageOptimizeCommand(
-    inputName,
-    outputName,
-    plan,
-    info
-  );
-
-  const progressHandler = ({
-    progress,
-  }: {
-    time: number;
-    progress: number;
-  }) => {
-    let rawPercent = 0;
-
-    if (typeof progress === "number") {
-      rawPercent = progress;
-    }
-
-    if (isNaN(rawPercent) || rawPercent < 0) rawPercent = 0;
-    if (rawPercent > 1) rawPercent = 1;
-
-    const startOffset = 20;
-    const endCap = 95;
-    const range = endCap - startOffset;
-
-    const mappedProgress = startOffset + Math.round(rawPercent * range);
-
-    sendProgress(
-      "Optimizing",
-      mappedProgress,
-      `Optimizing image... ${Math.round(rawPercent * 100)}%`
-    );
-  };
-
-  ffmpeg.on("progress", progressHandler);
-
-  try {
-    await ffmpeg.exec(ffmpegArgs);
-  } catch (execError) {
-    console.error("❌ FFmpeg exec failed:", execError);
-    throw execError;
-  } finally {
-    ffmpeg.off("progress", progressHandler);
-  }
-}
-
-function buildImageOptimizeCommand(
-  input: string,
-  output: string,
-  plan: ProcessingPlan,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _info: ImageInfo
-): string[] {
-  const args: string[] = [
-    "-i",
-    input,
-  ];
-
-  const filters: string[] = [];
-
-  // Handle rotation metadata
-  if (plan.needsRotation) {
-    let rot = plan.rotation % 360;
-    if (rot < 0) rot += 360;
-
-    if (rot === 90) {
-      filters.push("transpose=1");
-    } else if (rot === 270) {
-      filters.push("transpose=2");
-    } else if (rot === 180) {
-      filters.push("hflip,vflip");
-    }
-  }
-
-  // Resize if needed
-  if (plan.needsResize) {
-    filters.push(
-      `scale=${plan.outputWidth}:${plan.outputHeight}:force_original_aspect_ratio=decrease`
-    );
-  }
-
-  if (filters.length > 0) {
-    args.push("-vf", filters.join(","));
-  }
-
-  // JPEG encoding settings
-  args.push(
-    "-q:v",
-    "2" // High quality JPEG (scale 2-31, lower is better)
-  );
-
-  args.push("-y", output);
-
-  return args;
-}
-
-function getFileExtension(filename: string): string {
-  const parts = filename.split(".");
-  return parts.length > 1 ? "." + parts[parts.length - 1] : ".jpg";
-}
 
 function sendProgress(
   stage: string,
