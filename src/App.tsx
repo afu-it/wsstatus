@@ -9,6 +9,8 @@ import type {
   ProcessingProgress,
   ProcessingResult,
 } from "./types";
+import type { ImageAdjustments } from "./components/ImageEditor";
+import type { VideoAdjustments } from "./components/VideoEditor";
 import { getPresetForMediaType } from "./lib/presets";
 import { clearOldTempFiles } from "./lib/db";
 import { useEffect, useRef } from "react";
@@ -135,7 +137,7 @@ function App() {
     setStage("analysis");
   };
 
-  const handleOptimize = async (adjustments?: { sharpening: number; structure: number; hdr: number; upscale: boolean }) => {
+  const handleOptimize = async (adjustments?: ImageAdjustments | VideoAdjustments) => {
     if (!mediaFile) return;
 
     setStage("processing");
@@ -191,7 +193,9 @@ function App() {
           file: mediaFile.file,
           preset,
           adjustments: adjustments || {
-            sharpening: 8,
+            sharpening: 30,
+            structure: 5,
+            hdr: 2,
             upscale: true,
           },
         });
@@ -288,6 +292,11 @@ function App() {
         worker.postMessage({
           file: mediaFile.file,
           preset,
+          adjustments: adjustments || {
+            sharpening: 30,
+            structure: 5,
+            hdr: 2,
+          },
         });
       }
     } catch (error) {

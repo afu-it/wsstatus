@@ -3,18 +3,25 @@ import type { MediaFile } from "@/types";
 import { getPresetForMediaType } from "@/lib/presets";
 import { formatFileSize, formatDuration } from "@/lib/utils";
 import { ImageEditor, type ImageAdjustments } from "./ImageEditor";
+import { VideoEditor, type VideoAdjustments } from "./VideoEditor";
 
 interface MediaAnalysisProps {
   mediaFile: MediaFile;
-  onOptimize: (adjustments?: ImageAdjustments) => void;
+  onOptimize: (adjustments?: ImageAdjustments | VideoAdjustments) => void;
   onCancel: () => void;
 }
 
-const defaultAdjustments: ImageAdjustments = {
+const defaultImageAdjustments: ImageAdjustments = {
   sharpening: 30,
   structure: 5,
   hdr: 2,
   upscale: true,
+};
+
+const defaultVideoAdjustments: VideoAdjustments = {
+  sharpening: 30,
+  structure: 5,
+  hdr: 2,
 };
 
 export function MediaAnalysis({
@@ -22,7 +29,8 @@ export function MediaAnalysis({
   onOptimize,
   onCancel,
 }: MediaAnalysisProps) {
-  const [adjustments, setAdjustments] = useState<ImageAdjustments>(defaultAdjustments);
+  const [imageAdjustments, setImageAdjustments] = useState<ImageAdjustments>(defaultImageAdjustments);
+  const [videoAdjustments, setVideoAdjustments] = useState<VideoAdjustments>(defaultVideoAdjustments);
   const [showEditor, setShowEditor] = useState(false);
 
   const preset = getPresetForMediaType(mediaFile.type);
@@ -34,9 +42,9 @@ export function MediaAnalysis({
 
   const handleOptimize = () => {
     if (mediaFile.type === "image") {
-      onOptimize(adjustments);
+      onOptimize(imageAdjustments);
     } else {
-      onOptimize();
+      onOptimize(videoAdjustments);
     }
   };
 
@@ -231,7 +239,49 @@ export function MediaAnalysis({
 
           {showEditor && (
             <div className="mt-4">
-              <ImageEditor adjustments={adjustments} onChange={setAdjustments} />
+              <ImageEditor adjustments={imageAdjustments} onChange={setImageAdjustments} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Video Editor Toggle */}
+      {mediaFile.type === "video" && (
+        <div>
+          <button
+            onClick={() => setShowEditor(!showEditor)}
+            className="w-full flex items-center justify-between glass-card rounded-2xl p-4 transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <svg
+                className="w-5 h-5 text-brand-primary"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
+                />
+              </svg>
+              <span className="text-sm font-bold text-gray-900">Video Adjustments</span>
+            </div>
+            <svg
+              className={`w-5 h-5 text-gray-400 transition-transform ${showEditor ? "rotate-180" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {showEditor && (
+            <div className="mt-4">
+              <VideoEditor adjustments={videoAdjustments} onChange={setVideoAdjustments} />
             </div>
           )}
         </div>

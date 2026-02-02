@@ -9,7 +9,22 @@ let lastProgressTime = 0;
 const PROGRESS_THROTTLE_MS = 100;
 
 self.onmessage = async (e: MessageEvent) => {
-  const { file, preset, sharpening = true } = e.data as { file: File; preset: Preset; sharpening?: boolean };
+  const { file, preset, adjustments } = e.data as {
+    file: File;
+    preset: Preset;
+    adjustments?: {
+      sharpening: number;
+      structure: number;
+      hdr: number;
+    };
+  };
+
+  const adj = adjustments || {
+    sharpening: 30,
+    structure: 5,
+    hdr: 2,
+  };
+
   const config = preset.config as VideoConfig;
   lastSentProgress = 0;
   lastProgressTime = 0;
@@ -91,7 +106,7 @@ self.onmessage = async (e: MessageEvent) => {
         config,
         processingPlan,
         videoInfo,
-        sharpening
+        adj
       );
     }
 
@@ -352,7 +367,7 @@ async function processFullQuality(
   config: VideoConfig,
   plan: ProcessingPlan,
   info: VideoInfo,
-  sharpening: boolean = true
+  adjustments: { sharpening: number; structure: number; hdr: number }
 ) {
   const ffmpegArgs = buildOptimizedFFmpegCommand(
     inputName,
@@ -360,7 +375,7 @@ async function processFullQuality(
     config,
     plan,
     info,
-    sharpening
+    adjustments
   );
 
   const totalDuration = plan.targetDuration || info.duration || 1;
@@ -415,7 +430,7 @@ function buildOptimizedFFmpegCommand(
   _config: VideoConfig,
   plan: ProcessingPlan,
   info: VideoInfo,
-  sharpening: boolean = true
+  adjustments: { sharpening: number; structure: number; hdr: number }
 ): string[] {
   const args: string[] = ["-threads", "1", "-noautorotate", "-i", input];
 
@@ -443,13 +458,34 @@ function buildOptimizedFFmpegCommand(
     }
   }
 
+  // Lock to 30fps
   if (plan.needsFpsConversion || info.fps > 30) {
     filters.push("fps=30");
   }
 
-  // Add 10% sharpening only if enabled
-  if (sharpening) {
-    filters.push("unsharp=5:5:0.5:5:5:0.0");
+  // Apply sharpening filter based on amount (0-50%)
+  if (adjustments.sharpening > 0) {
+    // unsharp filter: luma_matrix:chroma_matrix:luma_amount:chroma_amount
+    // Scale amount from 0-50% to 0-2.0 for FFmpeg
+    const amount = (adjustments.sharpening / 50) * 2.0;
+    filters.push(`unsharp=5:5:${amount.toFixed(2)}:5:5:0.0`);
+  }
+
+  // Apply structure enhancement (texture detail)
+  if (adjustments.structure > 0) {
+    // Scale amount from 0-50% to 0-1.5 for FFmpeg
+    const amount = (adjustments.structure / 50) * 1.5;
+    // Use adaptive sharpen for texture enhancement
+    filters.push(`unsharp=7:7:${amount.toFixed(2)}:7:7:${(amount * 0.5).toFixed(2)}`);
+  }
+
+  // Apply HDR-like enhancement (contrast/brightness)
+  if (adjustments.hdr > 0) {
+    // Scale amount from 0-20% to eq filter values
+    const contrast = 1 + (adjustments.hdr / 20) * 0.3; // 1.0 to 1.3
+    const brightness = (adjustments.hdr / 20) * 0.05; // 0 to 0.05
+    const saturation = 1 + (adjustments.hdr / 20) * 0.2; // 1.0 to 1.2
+    filters.push(`eq=contrast=${contrast.toFixed(2)}:brightness=${brightness.toFixed(3)}:saturation=${saturation.toFixed(2)}`);
   }
 
   if (plan.needsResize) {
