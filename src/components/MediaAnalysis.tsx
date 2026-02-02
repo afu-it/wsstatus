@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import type { MediaFile } from "@/types";
 import { getPresetForMediaType } from "@/lib/presets";
 import { formatFileSize, formatDuration } from "@/lib/utils";
@@ -11,8 +11,8 @@ interface MediaAnalysisProps {
 }
 
 const defaultAdjustments: ImageAdjustments = {
-  sharpening: 8,
-  hdr: 2,
+  sharpening: 15,
+  hdr: 5,
   upscale: true,
 };
 
@@ -23,9 +23,6 @@ export function MediaAnalysis({
 }: MediaAnalysisProps) {
   const [adjustments, setAdjustments] = useState<ImageAdjustments>(defaultAdjustments);
   const [showEditor, setShowEditor] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string>("");
-  const workerRef = useRef<Worker | null>(null);
-  const debounceTimerRef = useRef<number | null>(null);
 
   const preset = getPresetForMediaType(mediaFile.type);
   const { metadata } = mediaFile;
@@ -33,65 +30,6 @@ export function MediaAnalysis({
     mediaFile.type === "video" && metadata?.duration && metadata.duration > 90;
   const isVideoOver30s =
     mediaFile.type === "video" && metadata?.duration && metadata.duration > 30;
-
-  // Generate preview when adjustments change (for images only)
-  useEffect(() => {
-    if (mediaFile.type !== "image") return;
-
-    // Clear previous timer
-    if (debounceTimerRef.current) {
-      window.clearTimeout(debounceTimerRef.current);
-    }
-
-    // Debounce preview generation (500ms)
-    debounceTimerRef.current = window.setTimeout(async () => {
-      try {
-        // Create worker if not exists
-        if (!workerRef.current) {
-          const ImageWorker = await import("@/workers/image-processor.worker?worker");
-          workerRef.current = new ImageWorker.default();
-
-          workerRef.current.onmessage = (e: MessageEvent) => {
-            const { type, payload } = e.data;
-            if (type === "preview") {
-              const url = URL.createObjectURL(payload.blob);
-              setPreviewUrl((prev) => {
-                if (prev) URL.revokeObjectURL(prev);
-                return url;
-              });
-            }
-          };
-        }
-
-        // Request preview
-        workerRef.current.postMessage({
-          file: mediaFile.file,
-          adjustments,
-          preview: true,
-        });
-      } catch (error) {
-        console.error("Preview generation error:", error);
-      }
-    }, 500);
-
-    return () => {
-      if (debounceTimerRef.current) {
-        window.clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, [adjustments, mediaFile]);
-
-  // Cleanup worker and preview URL on unmount
-  useEffect(() => {
-    return () => {
-      if (workerRef.current) {
-        workerRef.current.terminate();
-      }
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-    };
-  }, [previewUrl]);
 
   const handleOptimize = () => {
     if (mediaFile.type === "image") {
@@ -252,31 +190,6 @@ export function MediaAnalysis({
                 this into {Math.ceil((metadata?.duration || 0) / 30)} clips.
               </p>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Image Preview (for images only) - Compact */}
-      {mediaFile.type === "image" && showEditor && (
-        <div className="glass-card rounded-xl overflow-hidden max-w-sm mx-auto">
-          <div className="relative">
-            <img
-              src={previewUrl || mediaFile.preview}
-              alt="Preview"
-              className="w-full h-auto max-h-64 object-contain"
-            />
-            {!previewUrl && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/10">
-                <div className="text-xs font-semibold text-white bg-black/50 px-3 py-1 rounded-full">
-                  Loading preview...
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="px-3 py-2 bg-gray-50 text-center">
-            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">
-              Preview - HDR {adjustments.hdr}% · Sharpening {adjustments.sharpening}%
-            </p>
           </div>
         </div>
       )}

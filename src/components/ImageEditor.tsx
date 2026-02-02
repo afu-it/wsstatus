@@ -10,8 +10,8 @@ interface ImageEditorProps {
 }
 
 const defaultAdjustments: ImageAdjustments = {
-  sharpening: 8,
-  hdr: 2,
+  sharpening: 15,
+  hdr: 5,
   upscale: true,
 };
 
