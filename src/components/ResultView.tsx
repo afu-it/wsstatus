@@ -49,8 +49,6 @@ export function ResultView({
 
         await navigator.share({
           files: [file],
-          title: "Share Optimized Media",
-          text: "Optimized with WSstatus for WhatsApp Status",
         });
       } catch (err) {
         if ((err as Error).name !== "AbortError") {

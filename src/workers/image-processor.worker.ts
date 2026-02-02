@@ -23,7 +23,7 @@ self.onmessage = async (e: MessageEvent) => {
 
     const fileData = new Uint8Array(await file.arrayBuffer());
     const inputName = "input" + getFileExtension(file.name);
-    const outputName = "output.mp4";
+    const outputName = "output.jpg";
 
     await ffmpeg.writeFile(inputName, fileData);
 
@@ -47,9 +47,9 @@ self.onmessage = async (e: MessageEvent) => {
 
     const processingPlan = determineProcessingPlan(imageInfo, config);
 
-    sendProgress("Converting", 20, "Creating WhatsApp status...", true);
+    sendProgress("Optimizing", 20, "Optimizing image for WhatsApp...", true);
 
-    await convertImageToVideo(
+    await optimizeImage(
       ffmpeg,
       inputName,
       outputName,
@@ -57,7 +57,7 @@ self.onmessage = async (e: MessageEvent) => {
       imageInfo
     );
 
-    sendProgress("Finalizing", 93, "Analyzing optimized media...", true);
+    sendProgress("Finalizing", 93, "Analyzing optimized image...", true);
     sendProgress("Finalizing", 96, "Reading output file...", true);
 
     const outputData = await ffmpeg.readFile(outputName);
@@ -65,7 +65,7 @@ self.onmessage = async (e: MessageEvent) => {
     sendProgress("Finalizing", 98, "Generating blob...", true);
 
     const blob = new Blob([Uint8Array.from(outputData as Uint8Array)], {
-      type: "video/mp4",
+      type: "image/jpeg",
     });
 
     sendProgress("Finalizing", 99, "Preparing result...", true);
@@ -209,14 +209,14 @@ function determineProcessingPlan(
   };
 }
 
-async function convertImageToVideo(
+async function optimizeImage(
   ffmpeg: import("@ffmpeg/ffmpeg").FFmpeg,
   inputName: string,
   outputName: string,
   plan: ProcessingPlan,
   info: ImageInfo
 ) {
-  const ffmpegArgs = buildImageToVideoCommand(
+  const ffmpegArgs = buildImageOptimizeCommand(
     inputName,
     outputName,
     plan,
@@ -224,7 +224,6 @@ async function convertImageToVideo(
   );
 
   const progressHandler = ({
-    time,
     progress,
   }: {
     time: number;
@@ -232,13 +231,7 @@ async function convertImageToVideo(
   }) => {
     let rawPercent = 0;
 
-    // 5 seconds = 5000000 microseconds
-    const totalDuration = 5;
-
-    if (typeof time === "number" && time > 0) {
-      const t = time > totalDuration * 100 ? time / 1000000 : time;
-      rawPercent = t / totalDuration;
-    } else if (typeof progress === "number") {
+    if (typeof progress === "number") {
       rawPercent = progress;
     }
 
@@ -252,9 +245,9 @@ async function convertImageToVideo(
     const mappedProgress = startOffset + Math.round(rawPercent * range);
 
     sendProgress(
-      "Converting",
+      "Optimizing",
       mappedProgress,
-      `Creating WhatsApp status... ${Math.round(rawPercent * 100)}%`
+      `Optimizing image... ${Math.round(rawPercent * 100)}%`
     );
   };
 
@@ -270,7 +263,7 @@ async function convertImageToVideo(
   }
 }
 
-function buildImageToVideoCommand(
+function buildImageOptimizeCommand(
   input: string,
   output: string,
   plan: ProcessingPlan,
@@ -280,12 +273,8 @@ function buildImageToVideoCommand(
   const args: string[] = [
     "-threads",
     "1",
-    "-loop",
-    "1", // Loop the image
     "-i",
     input,
-    "-t",
-    "5", // 5 seconds duration
   ];
 
   const filters: string[] = [];
@@ -308,9 +297,6 @@ function buildImageToVideoCommand(
     }
   }
 
-  // Set frame rate to 30fps for smooth video
-  filters.push("fps=30");
-
   // Resize if needed
   if (plan.needsResize) {
     filters.push(
@@ -321,51 +307,23 @@ function buildImageToVideoCommand(
     );
   }
 
-  // Always set square pixels
-  filters.push("setsar=1");
-
   if (filters.length > 0) {
     args.push("-vf", filters.join(","));
   }
 
-  // Video encoding settings optimized for WhatsApp
+  // JPEG encoding settings optimized for WhatsApp
   args.push(
-    "-c:v",
-    "libx264",
-    "-profile:v",
-    "high",
-    "-level",
-    "4.2",
-    "-preset",
-    "veryfast",
-    "-crf",
-    "23", // Good quality
-    "-maxrate",
-    "4000k",
-    "-bufsize",
-    "6000k",
+    "-q:v",
+    "2", // High quality JPEG (scale 2-31, lower is better)
     "-pix_fmt",
-    "yuv420p",
-    "-g",
-    "60", // Keyframe every 2 seconds at 30fps
-    "-keyint_min",
-    "60",
-    "-x264-params",
-    "ref=2:bframes=3:scenecut=40",
-    "-aspect",
-    `${plan.outputWidth}:${plan.outputHeight}`,
-    "-sar",
-    "1:1"
+    "yuvj420p" // JPEG color space
   );
-
-  // No audio needed for image-based video
-  args.push("-an");
 
   if (didBakeRotation) {
     args.push("-metadata:s:v:0", "rotate=0");
   }
 
-  args.push("-map_metadata", "-1", "-movflags", "+faststart", "-y", output);
+  args.push("-y", output);
 
   return args;
 }

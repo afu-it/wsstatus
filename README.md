@@ -1,130 +1,169 @@
-# WAMO – WhatsApp Media Optimizer
+# WSstatus – WhatsApp Status Optimizer
 
-**WAMO (WhatsApp Media Optimizer)** is an open-source, fully offline-capable Progressive Web App that pre-processes images and videos so they survive WhatsApp Status compression with significantly better perceived quality.
+**WSstatus** is an open-source, fully offline-capable Progressive Web App that optimizes images and videos for WhatsApp Status. Get better quality, smaller file sizes, and perfectly formatted media that meets WhatsApp's requirements.
 
-This project does **not** bypass WhatsApp compression. That fantasy belongs in sci‑fi. Instead, WAMO conditions media *before upload* so WhatsApp’s inevitable recompression produces cleaner, sharper, and more stable results.
-
----
-
-## One-Line Description
-
-A deterministic, offline-first PWA that optimizes media to look better *after* WhatsApp recompression.
+🌐 **Live App:** https://afu-it.github.io/wsstatus/
 
 ---
 
-## Core Problem
+## ✨ Features
 
-WhatsApp aggressively re-encodes media uploaded to Status. This process:
-
-* Reduces bitrate unpredictably
-* Alters resolution and aspect ratio
-* Introduces blur, banding, and artifacts
-* Sometimes rotates or rescales videos depending on metadata
-
-Naively uploading “high quality” media usually makes things worse.
-
-WAMO exists to counteract this by **pre-conditioning** media so WhatsApp’s compression pipeline works *in our favor*.
+- **📸 Image Optimization** - Resize and compress images to WhatsApp's optimal dimensions (1080x1920)
+- **🎥 Video Optimization** - Process videos with perfect encoding for WhatsApp Status
+- **🔒 100% Private** - All processing happens locally in your browser, no uploads
+- **⚡ Offline-First** - Works without internet after first load (PWA)
+- **📱 Mobile-Optimized** - Beautiful, thumb-friendly interface for on-the-go editing
+- **🎨 Modern UI** - Clean, minimalist design with status-themed branding
+- **🚀 Fast Processing** - Powered by FFmpeg.wasm for professional-grade optimization
 
 ---
 
-## Primary Goal
+## 🎯 Why Use WSstatus?
 
-Generate **deterministic, WhatsApp-optimized media** that looks significantly better *after* WhatsApp compression compared to naive uploads.
+WhatsApp aggressively compresses media uploaded to Status. This often results in:
+- Blurry, pixelated images
+- Choppy videos with artifacts
+- Incorrect aspect ratios
+- Loss of important details
 
----
-
-## What WAMO Does
-
-* Analyzes patterns from original vs WhatsApp-compressed media
-* Applies a reverse-engineered preprocessing pipeline
-* Normalizes resolution, aspect ratio, rotation, and encoding hints
-* Produces media designed to be recompressed cleanly by WhatsApp
-* Works **entirely offline** in the browser
+**WSstatus solves this** by pre-optimizing your media with settings that work perfectly with WhatsApp's compression algorithms, giving you significantly better final quality.
 
 ---
 
-## What WAMO Explicitly Does NOT Do
+## 🚀 Quick Start
 
-These are intentionally out of scope:
+### Online (Recommended)
+Visit **https://afu-it.github.io/wsstatus/** from any modern browser!
 
-* Prevent WhatsApp recompression
-* Upload media directly to WhatsApp
-* Use cloud processing or servers
-* Store user media remotely
-* Include social features, accounts, or analytics
+### Install as PWA
+1. Visit the website on your phone/desktop
+2. Click "Install" button (appears automatically on supported browsers)
+3. Use WSstatus like a native app, even offline!
 
-If you’re looking for any of the above, this is the wrong repo.
+### Local Development
+```bash
+# Clone the repository
+git clone https://github.com/afu-it/wsstatus.git
+cd wsstatus
 
----
+# Install dependencies
+npm install
 
-## Design Principles
+# Run development server
+npm run dev
 
-* **Offline-first** – No servers, no uploads, no tracking
-* **Deterministic output** – Same input always yields the same result
-* **Pattern-based optimization** – Based on real WhatsApp compression behavior
-* **Minimal perceptual loss** – Optimize for what humans actually see
-* **Transparency** – No magic, no black boxes
-
----
-
-## Current Status
-
-* Core optimization algorithm implemented
-* Tested against multiple real-world videos
-* Successfully handles most rotation, scaling, and compression edge cases
-* Ongoing refinement for rare metadata-induced failures
-
-This project is actively evolving.
+# Build for production
+npm run build
+```
 
 ---
 
-## Tech Stack
+## 🛠️ Tech Stack
 
-* Progressive Web App (PWA)
-* Client-side video and image processing
-* No backend, no database
-* Open standards only
-
----
-
-## Why Open Source
-
-WhatsApp compression affects millions of people daily.
-
-This project is open source so:
-
-* Compression behavior can be studied openly
-* Improvements can be verified and reproduced
-* The algorithm can be audited and refined
-* No one has to trust a closed tool with their media
+- **React 19** - Modern UI library
+- **TypeScript** - Type-safe development
+- **Vite 6** - Lightning-fast build tool
+- **Tailwind CSS 4** - Utility-first styling
+- **FFmpeg.wasm** - Client-side media processing
+- **PWA** - Installable, offline-capable Progressive Web App
 
 ---
 
-## Contributing
+## 📋 How It Works
 
-Contributions are welcome, especially:
+1. **Upload** - Drag & drop or select your image/video
+2. **Analyze** - WSstatus checks dimensions, rotation, and encoding
+3. **Optimize** - Smart processing with WhatsApp-optimized settings
+4. **Share** - Directly share to WhatsApp or download for later
 
-* Compression pattern analysis
-* Edge-case media samples
-* Algorithm refinements
-* Bug reports with metadata
+### Optimization Details
 
-Please keep changes focused and justified. Random tweaks without evidence will be rejected.
+**Images:**
+- Resizes to 1080x1920 (portrait) or 1920x1080 (landscape)
+- Fixes rotation issues automatically
+- High-quality JPEG compression
+- Removes unnecessary metadata
+
+**Videos:**
+- Adjusts resolution to WhatsApp limits
+- Optimizes bitrate and codec settings
+- Fixes rotation and aspect ratio
+- Maximum 90 seconds duration (WhatsApp limit)
 
 ---
 
-## Disclaimer
+## 🔒 Privacy & Security
 
-WAMO is **not affiliated with WhatsApp or Meta**.
+- ✅ **No server uploads** - Everything processes in your browser
+- ✅ **No tracking** - Zero analytics or data collection
+- ✅ **No accounts** - No sign-up required
+- ✅ **Open source** - Fully auditable code
+- ✅ **Offline capable** - Works without internet connection
+
+---
+
+## 📱 Browser Support
+
+| Browser | Support |
+|---------|---------|
+| Chrome (Android/Desktop) | ✅ Full |
+| Edge | ✅ Full |
+| Safari (iOS/macOS) | ✅ Full |
+| Firefox | ⚠️ Limited (no PWA install) |
+| Samsung Internet | ✅ Full |
+
+**Minimum Requirements:**
+- Modern browser with ES6+ support
+- WebAssembly support
+- ~50MB available RAM for video processing
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Here's how you can help:
+
+1. **Report bugs** - Open an issue with details and steps to reproduce
+2. **Suggest features** - Share your ideas in the issues section
+3. **Submit PRs** - Fork, make changes, and submit a pull request
+4. **Improve docs** - Help make the README and guides better
+
+### Development Guidelines
+- Follow existing code style (use Prettier)
+- Test on mobile devices when possible
+- Keep changes focused and well-documented
+- Ensure offline functionality remains intact
+
+---
+
+## 📄 License
+
+MIT License - Use freely, modify, distribute!
+
+See [LICENSE](LICENSE) for full details.
+
+---
+
+## 🙏 Acknowledgments
+
+- Built with [FFmpeg.wasm](https://ffmpegwasm.netlify.app/)
+- Icons from [Heroicons](https://heroicons.com/)
+- Inspired by the need for better WhatsApp media quality
+
+---
+
+## ⚠️ Disclaimer
+
+WSstatus is **not affiliated with WhatsApp or Meta**.
 
 All trademarks belong to their respective owners.
 
-This tool works *with* WhatsApp’s compression behavior, not against it.
+This tool optimizes media for better compatibility with WhatsApp's requirements but does not bypass or interfere with WhatsApp's systems.
 
 ---
 
-## License
+## 🌟 Star This Project!
 
-MIT License
+If WSstatus helped you, please give it a ⭐ on GitHub!
 
-Use it. Study it. Improve it.
+**Made with ❤️ for better WhatsApp Status quality**
