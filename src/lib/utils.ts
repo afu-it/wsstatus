@@ -120,14 +120,11 @@ export async function checkVideoQuality(file: File): Promise<{
       };
     }
 
-    // Check 2: Very low resolution
+    // Check 2: Low resolution - just warn, don't reject (will be upscaled)
     if (width < 720 || height < 720) {
-      return {
-        isGoodQuality: false,
-        reason:
-          "This video has very low resolution. Compressing it won't improve quality for WhatsApp Status.",
-        warnings,
-      };
+      warnings.push(
+        "Low resolution video detected. Will be upscaled with sharpening applied."
+      );
     }
 
     // Check 3: Suspicious small file size for duration/resolution
@@ -188,14 +185,11 @@ export async function checkImageQuality(file: File): Promise<{
     const { width, height } = await getImageMetadata(file);
     const fileSizeMB = file.size / (1024 * 1024);
 
-    // Check 1: Very low resolution
+    // Check 1: Low resolution - just warn, don't reject (will be upscaled)
     if (width < 720 || height < 720) {
-      return {
-        isGoodQuality: false,
-        reason:
-          "This image has very low resolution. It won't look good on WhatsApp Status.",
-        warnings,
-      };
+      warnings.push(
+        "Low resolution image detected. Will be upscaled with sharpening applied."
+      );
     }
 
     // Check 2: Suspicious small file size for resolution

@@ -29,24 +29,23 @@ export function UploadZone({ onFileSelect }: UploadZoneProps) {
         return;
       }
 
-      // Pre-check file size (Output limit is 6MB, warn for large sources)
-      const MAX_RECOMMENDED_SIZE = 10 * 1024 * 1024; // 10MB
-      const MAX_OUTPUT_SIZE = 6 * 1024 * 1024; // 6MB
-      const CRITICAL_SIZE = 15 * 1024 * 1024; // 15MB
+      // Pre-check file size (100MB max upload, 6MB output)
+      const MAX_UPLOAD_SIZE = 100 * 1024 * 1024; // 100MB
+      const WARN_SIZE = 50 * 1024 * 1024; // 50MB
 
-      if (file.size > CRITICAL_SIZE) {
+      if (file.size > MAX_UPLOAD_SIZE) {
         const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
         setError(
-          `File too large (${sizeMB}MB). Please use an image under 15MB to avoid memory issues.`
+          `File too large (${sizeMB}MB). Maximum upload size is 100MB.`
         );
         return;
       }
 
-      if (file.size > MAX_RECOMMENDED_SIZE) {
+      if (file.size > WARN_SIZE) {
         const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
         setWarnings((prev) => [
           ...prev,
-          `⚠️ Large file (${sizeMB}MB). Processing may take longer.`,
+          `Large file (${sizeMB}MB). Processing may take longer.`,
         ]);
       }
 
@@ -76,14 +75,6 @@ export function UploadZone({ onFileSelect }: UploadZoneProps) {
 
           if (qualityCheck && qualityCheck.warnings.length > 0) {
             setWarnings((prev) => [...prev, ...qualityCheck!.warnings]);
-          }
-
-          // Check if output might exceed 6MB limit
-          if (file.size > MAX_OUTPUT_SIZE * 0.8) {
-            setWarnings((prev) => [
-              ...prev,
-              "⚠️ File is close to 6MB limit. Quality may be reduced to fit.",
-            ]);
           }
         } else {
           const { width, height, duration } = await getVideoMetadata(file);

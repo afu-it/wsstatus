@@ -5,17 +5,17 @@
 // File Size Limits (in bytes)
 // ===========================
 export const FILE_SIZE = {
-  // Maximum file sizes
-  MAX_IMAGE_SIZE: 50 * 1024 * 1024, // 50 MB
-  MAX_VIDEO_SIZE: 200 * 1024 * 1024, // 200 MB
+  // Maximum file sizes (100MB for both - will be optimized to 6MB output)
+  MAX_IMAGE_SIZE: 100 * 1024 * 1024, // 100 MB
+  MAX_VIDEO_SIZE: 100 * 1024 * 1024, // 100 MB
 
   // Warning thresholds
-  WARN_IMAGE_SIZE: 25 * 1024 * 1024, // 25 MB
-  WARN_VIDEO_SIZE: 100 * 1024 * 1024, // 100 MB
+  WARN_IMAGE_SIZE: 50 * 1024 * 1024, // 50 MB
+  WARN_VIDEO_SIZE: 50 * 1024 * 1024, // 50 MB
 
-  // Mobile-specific limits
-  MOBILE_MAX_IMAGE_SIZE: 20 * 1024 * 1024, // 20 MB
-  MOBILE_MAX_VIDEO_SIZE: 50 * 1024 * 1024, // 50 MB
+  // Mobile-specific limits (same as desktop now)
+  MOBILE_MAX_IMAGE_SIZE: 100 * 1024 * 1024, // 100 MB
+  MOBILE_MAX_VIDEO_SIZE: 100 * 1024 * 1024, // 100 MB
 } as const;
 
 // ===========================

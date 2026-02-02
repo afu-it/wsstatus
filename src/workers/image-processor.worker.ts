@@ -8,6 +8,10 @@ let lastProgressTime = 0;
 const PROGRESS_THROTTLE_MS = 100;
 const MAX_FILE_SIZE = 6 * 1024 * 1024; // 6MB in bytes (strict limit)
 
+// Target resolution for WhatsApp Status
+const TARGET_SHORT_EDGE = 1080;
+const TARGET_LONG_EDGE = 1920;
+
 self.onmessage = async (e: MessageEvent) => {
   const { file } = e.data as { file: File; preset: Preset };
   lastSentProgress = 0;
@@ -19,15 +23,58 @@ self.onmessage = async (e: MessageEvent) => {
     // Load image using OffscreenCanvas (more memory efficient than FFmpeg)
     const imageBitmap = await createImageBitmap(file);
 
-    sendProgress("Analyzing", 20, "Analyzing image...", true);
+    sendProgress("Analyzing", 15, "Analyzing image...", true);
 
-    const width = imageBitmap.width;
-    const height = imageBitmap.height;
+    const origWidth = imageBitmap.width;
+    const origHeight = imageBitmap.height;
+    const isPortrait = origHeight > origWidth;
 
-    // Create offscreen canvas
-    const canvas = new OffscreenCanvas(width, height);
+    // Determine target dimensions
+    let targetWidth: number;
+    let targetHeight: number;
+
+    if (isPortrait) {
+      // Portrait: width=1080, height=1920
+      targetWidth = TARGET_SHORT_EDGE;
+      targetHeight = TARGET_LONG_EDGE;
+    } else {
+      // Landscape: width=1920, height=1080
+      targetWidth = TARGET_LONG_EDGE;
+      targetHeight = TARGET_SHORT_EDGE;
+    }
+
+    // Calculate scale to fit within target dimensions while maintaining aspect ratio
+    const scaleX = targetWidth / origWidth;
+    const scaleY = targetHeight / origHeight;
+    const scale = Math.min(scaleX, scaleY);
+
+    // Calculate actual output dimensions
+    let outputWidth = Math.round(origWidth * scale);
+    let outputHeight = Math.round(origHeight * scale);
+
+    // Ensure dimensions are even (required for some encoders)
+    outputWidth = outputWidth - (outputWidth % 2);
+    outputHeight = outputHeight - (outputHeight % 2);
+
+    // Determine if upscaling is needed
+    const isUpscaling = scale > 1;
+    const isDownscaling = scale < 1;
+
+    sendProgress(
+      "Optimizing",
+      25,
+      isUpscaling
+        ? "Upscaling image with sharpening..."
+        : isDownscaling
+          ? "Resizing image..."
+          : "Processing image...",
+      true
+    );
+
+    // Create output canvas
+    const canvas = new OffscreenCanvas(outputWidth, outputHeight);
     const ctx = canvas.getContext("2d", {
-      willReadFrequently: false,
+      willReadFrequently: true,
       alpha: false,
     });
 
@@ -35,24 +82,27 @@ self.onmessage = async (e: MessageEvent) => {
       throw new Error("Failed to create canvas context");
     }
 
-    sendProgress("Optimizing", 40, "Processing image...", true);
+    // Set high-quality image rendering
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
 
-    // Draw image to canvas
-    ctx.drawImage(imageBitmap, 0, 0);
+    // Draw image scaled to target size
+    ctx.drawImage(imageBitmap, 0, 0, outputWidth, outputHeight);
 
-    // Apply sharpening using canvas filters (simple approach)
-    // Note: Canvas doesn't have unsharp mask, but we can apply contrast
-    ctx.filter = "contrast(1.1) saturate(1.05)";
-    ctx.drawImage(canvas, 0, 0);
-    ctx.filter = "none";
+    sendProgress("Optimizing", 40, "Applying enhancements...", true);
 
-    sendProgress("Optimizing", 60, "Compressing...", true);
+    // Apply sharpening (especially important for upscaled images)
+    // 10% sharpening using unsharp mask technique
+    applySharpening(ctx, outputWidth, outputHeight, isUpscaling ? 0.15 : 0.1);
+
+    sendProgress("Optimizing", 55, "Compressing...", true);
 
     // Try different quality levels to stay under 6MB
-    let quality = 0.92; // Start with high quality
+    let quality = 0.95; // Start with very high quality
     let blob: Blob | null = null;
     let attempts = 0;
-    const maxAttempts = 5;
+    const maxAttempts = 10; // More attempts for larger files
+    const minQuality = 0.5; // Don't go below 50%
 
     while (attempts < maxAttempts) {
       attempts++;
@@ -64,7 +114,7 @@ self.onmessage = async (e: MessageEvent) => {
 
       sendProgress(
         "Optimizing",
-        60 + attempts * 8,
+        55 + attempts * 4,
         `Optimizing quality (${Math.round(quality * 100)}%)...`,
         true
       );
@@ -72,16 +122,40 @@ self.onmessage = async (e: MessageEvent) => {
       if (blob.size <= MAX_FILE_SIZE) {
         // Success!
         break;
-      } else if (attempts < maxAttempts) {
+      } else if (attempts < maxAttempts && quality > minQuality) {
         // Reduce quality for next attempt
-        quality -= 0.1;
-        if (quality < 0.6) quality = 0.6; // Don't go below 60%
+        // Use larger steps for bigger files
+        const reduction = blob.size > MAX_FILE_SIZE * 2 ? 0.1 : 0.05;
+        quality -= reduction;
+        if (quality < minQuality) quality = minQuality;
       } else {
-        // Last attempt failed
-        const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
-        throw new Error(
-          `Image too large (${sizeMB}MB). Please use a smaller or lower resolution image.`
-        );
+        // Last resort: reduce resolution if still too large
+        if (blob.size > MAX_FILE_SIZE) {
+          sendProgress("Optimizing", 75, "Reducing resolution...", true);
+          const reductionFactor = Math.sqrt(MAX_FILE_SIZE / blob.size) * 0.9;
+          const newWidth = Math.round(outputWidth * reductionFactor);
+          const newHeight = Math.round(outputHeight * reductionFactor);
+
+          const reducedCanvas = new OffscreenCanvas(
+            newWidth - (newWidth % 2),
+            newHeight - (newHeight % 2)
+          );
+          const reducedCtx = reducedCanvas.getContext("2d", {
+            alpha: false,
+          });
+
+          if (reducedCtx) {
+            reducedCtx.imageSmoothingEnabled = true;
+            reducedCtx.imageSmoothingQuality = "high";
+            reducedCtx.drawImage(canvas, 0, 0, newWidth, newHeight);
+
+            blob = await reducedCanvas.convertToBlob({
+              type: "image/jpeg",
+              quality: 0.85,
+            });
+          }
+        }
+        break;
       }
     }
 
@@ -93,7 +167,7 @@ self.onmessage = async (e: MessageEvent) => {
     if (blob.size > MAX_FILE_SIZE) {
       const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
       throw new Error(
-        `Output file (${sizeMB}MB) exceeds 6MB limit. Please use a smaller image.`
+        `Output file (${sizeMB}MB) still exceeds 6MB limit after all optimizations.`
       );
     }
 
@@ -101,6 +175,11 @@ self.onmessage = async (e: MessageEvent) => {
 
     const fileSizeMB = (blob.size / (1024 * 1024)).toFixed(2);
     const qualityPercent = Math.round(quality * 100);
+    const resNote = isUpscaling
+      ? "Upscaled"
+      : isDownscaling
+        ? "Resized"
+        : "Optimized";
 
     sendComplete({
       blob,
@@ -111,7 +190,7 @@ self.onmessage = async (e: MessageEvent) => {
         processingTime: 0,
         optimizationApplied: true,
         threadingMode: "canvas-optimized",
-        notes: `${fileSizeMB}MB • Quality: ${qualityPercent}% • Enhanced`,
+        notes: `${fileSizeMB}MB | Quality: ${qualityPercent}% | ${resNote} | Sharpened`,
       },
     });
   } catch (error) {
@@ -119,6 +198,93 @@ self.onmessage = async (e: MessageEvent) => {
     sendError(error);
   }
 };
+
+/**
+ * Apply sharpening using unsharp mask technique
+ * @param ctx Canvas context
+ * @param width Canvas width
+ * @param height Canvas height
+ * @param amount Sharpening amount (0.1 = 10%, 0.15 = 15%)
+ */
+function applySharpening(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  try {
+    // Get image data
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+
+    // Create a copy for the blur pass
+    const blurData = new Uint8ClampedArray(data);
+
+    // Simple 3x3 box blur
+    const blurRadius = 1;
+    for (let y = blurRadius; y < height - blurRadius; y++) {
+      for (let x = blurRadius; x < width - blurRadius; x++) {
+        const idx = (y * width + x) * 4;
+
+        let r = 0,
+          g = 0,
+          b = 0;
+        let count = 0;
+
+        for (let dy = -blurRadius; dy <= blurRadius; dy++) {
+          for (let dx = -blurRadius; dx <= blurRadius; dx++) {
+            const nIdx = ((y + dy) * width + (x + dx)) * 4;
+            r += data[nIdx];
+            g += data[nIdx + 1];
+            b += data[nIdx + 2];
+            count++;
+          }
+        }
+
+        blurData[idx] = r / count;
+        blurData[idx + 1] = g / count;
+        blurData[idx + 2] = b / count;
+      }
+    }
+
+    // Apply unsharp mask: original + amount * (original - blur)
+    const sharpenFactor = 1 + amount;
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.min(
+        255,
+        Math.max(0, data[i] * sharpenFactor - blurData[i] * amount)
+      );
+      data[i + 1] = Math.min(
+        255,
+        Math.max(0, data[i + 1] * sharpenFactor - blurData[i + 1] * amount)
+      );
+      data[i + 2] = Math.min(
+        255,
+        Math.max(0, data[i + 2] * sharpenFactor - blurData[i + 2] * amount)
+      );
+    }
+
+    // Also apply slight contrast enhancement
+    const contrast = 1.05; // 5% contrast boost
+    const factor = (259 * (contrast * 255 + 255)) / (255 * (259 - contrast * 255));
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));
+      data[i + 1] = Math.min(
+        255,
+        Math.max(0, factor * (data[i + 1] - 128) + 128)
+      );
+      data[i + 2] = Math.min(
+        255,
+        Math.max(0, factor * (data[i + 2] - 128) + 128)
+      );
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    // If sharpening fails, continue without it
+    console.warn("Sharpening failed, continuing without:", e);
+  }
+}
 
 function sendProgress(
   stage: string,
