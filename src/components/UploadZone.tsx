@@ -29,15 +29,24 @@ export function UploadZone({ onFileSelect }: UploadZoneProps) {
         return;
       }
 
-      // Pre-check file size (Output limit is 6MB, but warn for >10MB source files)
+      // Pre-check file size (Output limit is 6MB, warn for large sources)
       const MAX_RECOMMENDED_SIZE = 10 * 1024 * 1024; // 10MB
       const MAX_OUTPUT_SIZE = 6 * 1024 * 1024; // 6MB
+      const CRITICAL_SIZE = 15 * 1024 * 1024; // 15MB
+
+      if (file.size > CRITICAL_SIZE) {
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+        setError(
+          `File too large (${sizeMB}MB). Please use an image under 15MB to avoid memory issues.`
+        );
+        return;
+      }
 
       if (file.size > MAX_RECOMMENDED_SIZE) {
         const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
         setWarnings((prev) => [
           ...prev,
-          `⚠️ Large file (${sizeMB}MB). Processing may take longer or fail.`,
+          `⚠️ Large file (${sizeMB}MB). Processing may take longer.`,
         ]);
       }
 
