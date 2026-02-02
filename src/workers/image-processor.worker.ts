@@ -95,7 +95,7 @@ self.onmessage = async (e: MessageEvent) => {
     sendProgress("Optimizing", 55, "Encoding with maximum quality...", true);
 
     // Encode at maximum quality
-    let quality = 1.0;
+    const quality = 1.0;
     let blob = await canvas.convertToBlob({
       type: "image/jpeg",
       quality: quality,

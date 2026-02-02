@@ -21,6 +21,17 @@ export function ResultView({
     result.metadata.optimizedSize
   );
 
+  const getSavedDisplay = (): { value: string; isPositive: boolean } => {
+    const absValue = Math.abs(compressionRatio).toFixed(1);
+    const isPositive = result.metadata.optimizedSize > result.metadata.originalSize;
+    return {
+      value: isPositive ? `+${absValue}%` : `-${absValue}%`,
+      isPositive,
+    };
+  };
+
+  const savedInfo = getSavedDisplay();
+
   const getOptimizedFilename = (originalName: string, ext: string) => {
     const lastDotIndex = originalName.lastIndexOf(".");
     const baseName =
@@ -104,7 +115,8 @@ export function ResultView({
           },
           {
             label: "Saved",
-            value: `${compressionRatio.toFixed(1)}%`,
+            value: savedInfo.value,
+            savedPositive: savedInfo.isPositive,
           },
         ].map((stat, i) => (
           <div
@@ -119,7 +131,11 @@ export function ResultView({
             </p>
             <p
               className={`text-base font-black ${
-                stat.highlight ? "text-brand-primary" : "text-gray-900"
+                stat.highlight
+                  ? "text-brand-primary"
+                  : stat.savedPositive
+                    ? "text-green-600"
+                    : "text-gray-900"
               }`}
             >
               {stat.value}

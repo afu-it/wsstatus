@@ -149,7 +149,6 @@ function App() {
 
     try {
       if (mediaFile.type === "image") {
-        // @ts-ignore
         const ImageWorker = await import(
           /* @vite-ignore */ "./workers/image-processor.worker?worker&v=2"
         );
