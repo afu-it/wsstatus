@@ -15,13 +15,13 @@ interface ImageEditorProps {
 }
 
 const defaultAdjustments: ImageAdjustments = {
-  sharpening: 9,
-  contrast: 2,
-  blackPoint: 2,
-  shadows: 2,
-  hdr: 2,
-  vibrant: 2,
-  saturation: 2,
+  sharpening: 15,
+  contrast: 5,
+  blackPoint: 5,
+  shadows: 5,
+  hdr: 5,
+  vibrant: 5,
+  saturation: 5,
   upscale: true,
 };
 
@@ -76,7 +76,7 @@ export function ImageEditor({ adjustments, onChange }: ImageEditorProps) {
           <input
             type="range"
             min="0"
-            max="20"
+            max="30"
             value={adjustments.sharpening}
             onChange={(e) => updateField("sharpening", parseInt(e.target.value))}
             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-primary"
@@ -92,7 +92,7 @@ export function ImageEditor({ adjustments, onChange }: ImageEditorProps) {
           <input
             type="range"
             min="0"
-            max="10"
+            max="20"
             value={adjustments.hdr}
             onChange={(e) => updateField("hdr", parseInt(e.target.value))}
             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-primary"
@@ -108,7 +108,7 @@ export function ImageEditor({ adjustments, onChange }: ImageEditorProps) {
           <input
             type="range"
             min="0"
-            max="10"
+            max="20"
             value={adjustments.vibrant}
             onChange={(e) => updateField("vibrant", parseInt(e.target.value))}
             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-primary"
@@ -124,7 +124,7 @@ export function ImageEditor({ adjustments, onChange }: ImageEditorProps) {
           <input
             type="range"
             min="0"
-            max="10"
+            max="20"
             value={adjustments.saturation}
             onChange={(e) => updateField("saturation", parseInt(e.target.value))}
             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-primary"
@@ -140,7 +140,7 @@ export function ImageEditor({ adjustments, onChange }: ImageEditorProps) {
           <input
             type="range"
             min="0"
-            max="20"
+            max="30"
             value={adjustments.contrast}
             onChange={(e) => updateField("contrast", parseInt(e.target.value))}
             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-primary"
@@ -156,7 +156,7 @@ export function ImageEditor({ adjustments, onChange }: ImageEditorProps) {
           <input
             type="range"
             min="0"
-            max="15"
+            max="20"
             value={adjustments.blackPoint}
             onChange={(e) => updateField("blackPoint", parseInt(e.target.value))}
             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-primary"
@@ -171,8 +171,8 @@ export function ImageEditor({ adjustments, onChange }: ImageEditorProps) {
           </div>
           <input
             type="range"
-            min="-20"
-            max="20"
+            min="-30"
+            max="30"
             value={adjustments.shadows}
             onChange={(e) => updateField("shadows", parseInt(e.target.value))}
             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-primary"

@@ -11,13 +11,13 @@ interface MediaAnalysisProps {
 }
 
 const defaultAdjustments: ImageAdjustments = {
-  sharpening: 9,
-  contrast: 2,
-  blackPoint: 2,
-  shadows: 2,
-  hdr: 2,
-  vibrant: 2,
-  saturation: 2,
+  sharpening: 15,
+  contrast: 5,
+  blackPoint: 5,
+  shadows: 5,
+  hdr: 5,
+  vibrant: 5,
+  saturation: 5,
   upscale: true,
 };
 

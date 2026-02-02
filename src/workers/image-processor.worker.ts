@@ -30,13 +30,13 @@ self.onmessage = async (e: MessageEvent) => {
   };
 
   const adj = adjustments || {
-    sharpening: 9,
-    contrast: 2,
-    blackPoint: 2,
-    shadows: 2,
-    hdr: 2,
-    vibrant: 2,
-    saturation: 2,
+    sharpening: 15,
+    contrast: 5,
+    blackPoint: 5,
+    shadows: 5,
+    hdr: 5,
+    vibrant: 5,
+    saturation: 5,
     upscale: true,
   };
 
@@ -101,6 +101,7 @@ self.onmessage = async (e: MessageEvent) => {
     const canvas = new OffscreenCanvas(outputWidth, outputHeight);
     const ctx = canvas.getContext("2d", {
       alpha: false,
+      willReadFrequently: true,
     });
 
     if (!ctx) {
@@ -133,7 +134,7 @@ self.onmessage = async (e: MessageEvent) => {
     applyBlackPoint(ctx, outputWidth, outputHeight, adj.blackPoint / 100);
     applyShadows(ctx, outputWidth, outputHeight, adj.shadows / 100);
 
-    sendProgress("Optimizing", 55, "Encoding with maximum quality...", true);
+    sendProgress("Optimizing", 55, "Encoding...", true);
 
     // Encode at maximum quality
     const quality = 1.0;
@@ -142,7 +143,7 @@ self.onmessage = async (e: MessageEvent) => {
       quality: quality,
     });
 
-    // If file is less than 4MB (0-3MB range), upscale to reach at least 4MB
+    // If file is less than 4MB, upscale to reach at least 4MB
     if (adj.upscale && blob.size < TARGET_MIN_SIZE) {
       sendProgress("Optimizing", 70, "Upscaling for better quality...", true);
       
@@ -150,7 +151,7 @@ self.onmessage = async (e: MessageEvent) => {
       const targetPixels = (TARGET_MAX_SIZE / blob.size) * outputWidth * outputHeight;
       const upscaleFactor = Math.sqrt(targetPixels / (outputWidth * outputHeight));
       
-      // Allow up to 2x upscale for small files (was 1.5x)
+      // Allow up to 2x upscale for small files
       const limitedUpscaleFactor = Math.min(upscaleFactor, 2.0);
       
       const newWidth = Math.round(outputWidth * limitedUpscaleFactor);
@@ -163,21 +164,14 @@ self.onmessage = async (e: MessageEvent) => {
       );
       const upscaledCtx = upscaledCanvas.getContext("2d", {
         alpha: false,
+        willReadFrequently: true,
       });
 
       if (upscaledCtx) {
         upscaledCtx.imageSmoothingEnabled = true;
         upscaledCtx.imageSmoothingQuality = "high";
+        // Just upscale the already-adjusted image
         upscaledCtx.drawImage(canvas, 0, 0, newWidth, newHeight);
-
-        // Apply adjustments to upscaled image
-        applySharpening(upscaledCtx, newWidth, newHeight, adj.sharpening / 100);
-        applyHDR(upscaledCtx, newWidth, newHeight, adj.hdr / 100);
-        applyVibrant(upscaledCtx, newWidth, newHeight, adj.vibrant / 100);
-        applyBasicSaturation(upscaledCtx, newWidth, newHeight, adj.saturation / 100);
-        applyContrast(upscaledCtx, newWidth, newHeight, adj.contrast / 100);
-        applyBlackPoint(upscaledCtx, newWidth, newHeight, adj.blackPoint / 100);
-        applyShadows(upscaledCtx, newWidth, newHeight, adj.shadows / 100);
 
         // Re-encode at max quality
         blob = await upscaledCanvas.convertToBlob({
