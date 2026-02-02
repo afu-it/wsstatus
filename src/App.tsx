@@ -390,7 +390,7 @@ function App() {
           >
             <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white p-2.5 shadow-lg transform group-hover:scale-105 transition-all duration-300">
               <img
-                src="/icon-512.svg"
+                src={`${import.meta.env.BASE_URL}icon-512.svg`}
                 alt="WSstatus Logo"
                 className="w-full h-full object-contain"
               />

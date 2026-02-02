@@ -41,7 +41,7 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-white p-2 shadow-sm border border-gray-100">
               <img
-                src="/icon-512.svg"
+                src={`${import.meta.env.BASE_URL}icon-512.svg`}
                 alt="WSstatus"
                 className="w-full h-full object-contain"
               />

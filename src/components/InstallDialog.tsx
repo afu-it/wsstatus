@@ -68,7 +68,7 @@ export function InstallDialog({
                   >
                     <div className="w-full h-full bg-white rounded-xl flex items-center justify-center">
                       <img
-                        src="/icon-512.svg"
+                        src={`${import.meta.env.BASE_URL}icon-512.svg`}
                         alt="WSstatus Logo"
                         className={`${isLargeScreen ? "w-20 h-20" : "w-12 h-12 sm:w-14 sm:h-14"} object-contain`}
                       />
