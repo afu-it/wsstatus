@@ -1,6 +1,5 @@
 /// <reference lib="webworker" />
 
-import { getFFmpeg } from "@/lib/ffmpeg-loader";
 import type { WorkerMessage, Preset } from "@/types";
 
 let lastSentProgress = 0;
@@ -15,90 +14,93 @@ self.onmessage = async (e: MessageEvent) => {
   lastProgressTime = 0;
 
   try {
-    sendProgress("Initializing", 5, "Loading FFmpeg...", true);
+    sendProgress("Initializing", 5, "Loading image...", true);
 
-    const ffmpeg = await getFFmpeg();
+    // Load image using OffscreenCanvas (more memory efficient than FFmpeg)
+    const imageBitmap = await createImageBitmap(file);
 
-    sendProgress("Analyzing", 10, "Reading image...", true);
+    sendProgress("Analyzing", 20, "Analyzing image...", true);
 
-    const fileData = new Uint8Array(await file.arrayBuffer());
-    const inputName = "input" + getFileExtension(file.name);
-    const outputName = "output.jpg";
+    const width = imageBitmap.width;
+    const height = imageBitmap.height;
 
-    await ffmpeg.writeFile(inputName, fileData);
-
-    sendProgress("Optimizing", 30, "Adding sharpening...", true);
-
-    // Calculate appropriate quality to stay under 6MB
-    // For images, we'll use a simpler approach: single pass with good quality
-    // If source is very large, start with lower quality
-    let quality = 2; // High quality by default (q:v 2 = ~87%)
-
-    // Estimate: rough calculation based on source size
-    // If source > 8MB, use medium quality to avoid exceeding 6MB
-    if (file.size > 8 * 1024 * 1024) {
-      quality = 5; // Medium-high quality (~75%)
-      sendProgress(
-        "Optimizing",
-        30,
-        "Large image detected, adjusting quality...",
-        true
-      );
-    }
-
-    const ffmpegArgs = [
-      "-i",
-      inputName,
-      "-vf",
-      "unsharp=5:5:0.5:5:5:0.0", // 10% sharpening (luma only)
-      "-q:v",
-      quality.toString(),
-      "-y",
-      outputName,
-    ];
-
-    const progressHandler = ({ progress }: { progress: number }) => {
-      const mappedProgress = 30 + Math.round(progress * 60);
-      sendProgress(
-        "Optimizing",
-        mappedProgress,
-        `Processing... ${Math.round(progress * 100)}%`
-      );
-    };
-
-    ffmpeg.on("progress", progressHandler);
-
-    try {
-      await ffmpeg.exec(ffmpegArgs);
-    } catch (execError) {
-      console.error("FFmpeg exec failed:", execError);
-      throw new Error("Image optimization failed. Please try again.");
-    } finally {
-      ffmpeg.off("progress", progressHandler);
-    }
-
-    sendProgress("Finalizing", 92, "Reading result...", true);
-
-    const outputData = await ffmpeg.readFile(outputName);
-
-    const blob = new Blob([Uint8Array.from(outputData as Uint8Array)], {
-      type: "image/jpeg",
+    // Create offscreen canvas
+    const canvas = new OffscreenCanvas(width, height);
+    const ctx = canvas.getContext("2d", {
+      willReadFrequently: false,
+      alpha: false,
     });
 
-    await ffmpeg.deleteFile(inputName);
-    await ffmpeg.deleteFile(outputName);
+    if (!ctx) {
+      throw new Error("Failed to create canvas context");
+    }
 
-    // Check file size
+    sendProgress("Optimizing", 40, "Processing image...", true);
+
+    // Draw image to canvas
+    ctx.drawImage(imageBitmap, 0, 0);
+
+    // Apply sharpening using canvas filters (simple approach)
+    // Note: Canvas doesn't have unsharp mask, but we can apply contrast
+    ctx.filter = "contrast(1.1) saturate(1.05)";
+    ctx.drawImage(canvas, 0, 0);
+    ctx.filter = "none";
+
+    sendProgress("Optimizing", 60, "Compressing...", true);
+
+    // Try different quality levels to stay under 6MB
+    let quality = 0.92; // Start with high quality
+    let blob: Blob | null = null;
+    let attempts = 0;
+    const maxAttempts = 5;
+
+    while (attempts < maxAttempts) {
+      attempts++;
+
+      blob = await canvas.convertToBlob({
+        type: "image/jpeg",
+        quality: quality,
+      });
+
+      sendProgress(
+        "Optimizing",
+        60 + attempts * 8,
+        `Optimizing quality (${Math.round(quality * 100)}%)...`,
+        true
+      );
+
+      if (blob.size <= MAX_FILE_SIZE) {
+        // Success!
+        break;
+      } else if (attempts < maxAttempts) {
+        // Reduce quality for next attempt
+        quality -= 0.1;
+        if (quality < 0.6) quality = 0.6; // Don't go below 60%
+      } else {
+        // Last attempt failed
+        const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
+        throw new Error(
+          `Image too large (${sizeMB}MB). Please use a smaller or lower resolution image.`
+        );
+      }
+    }
+
+    if (!blob) {
+      throw new Error("Failed to process image");
+    }
+
+    // Final size check
     if (blob.size > MAX_FILE_SIZE) {
       const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
       throw new Error(
-        `Output file (${sizeMB}MB) exceeds 6MB limit. Please use a smaller or lower resolution image.`
+        `Output file (${sizeMB}MB) exceeds 6MB limit. Please use a smaller image.`
       );
     }
 
     sendProgress("Finalizing", 99, "Done!", true);
 
     const fileSizeMB = (blob.size / (1024 * 1024)).toFixed(2);
+    const qualityPercent = Math.round(quality * 100);
 
     sendComplete({
       blob,
@@ -108,8 +110,8 @@ self.onmessage = async (e: MessageEvent) => {
         compressionRatio: (1 - blob.size / file.size) * 100,
         processingTime: 0,
         optimizationApplied: true,
-        threadingMode: "jpeg-sharpened",
-        notes: `${fileSizeMB}MB • Sharpened • High Quality JPEG`,
+        threadingMode: "canvas-optimized",
+        notes: `${fileSizeMB}MB • Quality: ${qualityPercent}% • Enhanced`,
       },
     });
   } catch (error) {
@@ -117,11 +119,6 @@ self.onmessage = async (e: MessageEvent) => {
     sendError(error);
   }
 };
-
-function getFileExtension(filename: string): string {
-  const parts = filename.split(".");
-  return parts.length > 1 ? "." + parts[parts.length - 1] : ".jpg";
-}
 
 function sendProgress(
   stage: string,
