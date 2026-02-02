@@ -7,6 +7,15 @@ let lastProgressTime = 0;
 
 const PROGRESS_THROTTLE_MS = 100;
 
+// WhatsApp Status optimal dimensions
+const WHATSAPP_PORTRAIT_WIDTH = 1080;
+const WHATSAPP_PORTRAIT_HEIGHT = 1920;
+const WHATSAPP_LANDSCAPE_WIDTH = 1920;
+const WHATSAPP_LANDSCAPE_HEIGHT = 1080;
+
+// Optimal JPEG quality for WhatsApp (85-88% sweet spot)
+const JPEG_QUALITY = 0.87;
+
 self.onmessage = async (e: MessageEvent) => {
   const { file, preset } = e.data as { file: File; preset: Preset };
   const config = preset.config as ImageConfig;
@@ -23,68 +32,69 @@ self.onmessage = async (e: MessageEvent) => {
 
     const originalWidth = bitmap.width;
     const originalHeight = bitmap.height;
+    const isPortrait = originalHeight > originalWidth;
 
-    // Determine target dimensions
-    const maxDimension = config.maxDimension || 1920;
-    const isPortrait = originalWidth < originalHeight;
-
-    const PORTRAIT_MAX_WIDTH = Math.min(maxDimension, 1080);
-    const PORTRAIT_MAX_HEIGHT = Math.min(maxDimension, 1920);
-    const LANDSCAPE_MAX_WIDTH = Math.min(maxDimension, 1920);
-    const LANDSCAPE_MAX_HEIGHT = Math.min(maxDimension, 1080);
-
-    let maxWidth: number;
-    let maxHeight: number;
+    // Use WhatsApp's exact dimensions
+    let targetWidth: number;
+    let targetHeight: number;
 
     if (isPortrait) {
-      maxWidth = PORTRAIT_MAX_WIDTH;
-      maxHeight = PORTRAIT_MAX_HEIGHT;
+      targetWidth = WHATSAPP_PORTRAIT_WIDTH;
+      targetHeight = WHATSAPP_PORTRAIT_HEIGHT;
     } else {
-      maxWidth = LANDSCAPE_MAX_WIDTH;
-      maxHeight = LANDSCAPE_MAX_HEIGHT;
+      targetWidth = WHATSAPP_LANDSCAPE_WIDTH;
+      targetHeight = WHATSAPP_LANDSCAPE_HEIGHT;
     }
 
-    sendProgress("Planning", 25, "Calculating optimal dimensions...", true);
+    sendProgress("Planning", 25, "Optimizing for WhatsApp...", true);
 
-    // Calculate output dimensions
-    let outputWidth: number;
-    let outputHeight: number;
-
-    if (originalWidth <= maxWidth && originalHeight <= maxHeight) {
-      // No resize needed
-      outputWidth = originalWidth;
-      outputHeight = originalHeight;
-    } else {
-      // Scale down proportionally
-      const scaleRatio = Math.min(
-        maxWidth / originalWidth,
-        maxHeight / originalHeight
-      );
-      outputWidth = Math.round(originalWidth * scaleRatio);
-      outputHeight = Math.round(originalHeight * scaleRatio);
-    }
-
-    sendProgress("Optimizing", 40, "Resizing and optimizing...", true);
-
-    // Create canvas
-    const canvas = new OffscreenCanvas(outputWidth, outputHeight);
-    const ctx = canvas.getContext("2d");
+    // Create canvas with exact WhatsApp dimensions
+    const canvas = new OffscreenCanvas(targetWidth, targetHeight);
+    const ctx = canvas.getContext("2d", {
+      alpha: false, // No transparency for JPEG
+    });
 
     if (!ctx) {
       throw new Error("Failed to get canvas context");
     }
 
-    // Draw image with high quality
+    // Fill background (in case of letterboxing)
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, targetWidth, targetHeight);
+
+    sendProgress("Optimizing", 40, "Resizing with high quality...", true);
+
+    // Calculate dimensions to COVER the canvas (no black bars)
+    const scale = Math.max(
+      targetWidth / originalWidth,
+      targetHeight / originalHeight
+    );
+
+    const scaledWidth = originalWidth * scale;
+    const scaledHeight = originalHeight * scale;
+
+    // Center the image
+    const x = (targetWidth - scaledWidth) / 2;
+    const y = (targetHeight - scaledHeight) / 2;
+
+    // Enable high-quality scaling
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(bitmap, 0, 0, outputWidth, outputHeight);
 
-    sendProgress("Finalizing", 70, "Generating optimized JPEG...", true);
+    // Draw image
+    ctx.drawImage(bitmap, x, y, scaledWidth, scaledHeight);
 
-    // Convert to JPEG blob
+    sendProgress("Enhancing", 60, "Applying sharpening...", true);
+
+    // Apply sharpening to compensate for WhatsApp's blur
+    await applySharpen(ctx, targetWidth, targetHeight);
+
+    sendProgress("Finalizing", 80, "Generating optimized JPEG...", true);
+
+    // Convert to JPEG with optimal quality
     const blob = await canvas.convertToBlob({
       type: "image/jpeg",
-      quality: 0.92, // High quality (0-1 scale)
+      quality: JPEG_QUALITY,
     });
 
     sendProgress("Finalizing", 95, "Preparing result...", true);
@@ -94,15 +104,19 @@ self.onmessage = async (e: MessageEvent) => {
 
     sendProgress("Finalizing", 99, "Complete!", true);
 
+    const compressionRatio = ((1 - blob.size / file.size) * 100);
+    const fileSizeMB = (blob.size / (1024 * 1024)).toFixed(2);
+
     sendComplete({
       blob,
       metadata: {
         originalSize: file.size,
         optimizedSize: blob.size,
-        compressionRatio: ((1 - blob.size / file.size) * 100),
+        compressionRatio: compressionRatio,
         processingTime: 0,
         optimizationApplied: true,
-        threadingMode: "canvas",
+        threadingMode: "canvas-optimized",
+        notes: `${fileSizeMB}MB • ${targetWidth}×${targetHeight} • JPEG ${Math.round(JPEG_QUALITY * 100)}%`,
       },
     });
   } catch (error) {
@@ -110,6 +124,72 @@ self.onmessage = async (e: MessageEvent) => {
     sendError(error);
   }
 };
+
+/**
+ * Apply subtle sharpening to compensate for WhatsApp's compression blur
+ */
+async function applySharpen(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number
+) {
+  // Get image data
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+
+  // Create output array
+  const output = new Uint8ClampedArray(data.length);
+
+  // Sharpening kernel (subtle)
+  const weights = [
+    0, -0.2, 0,
+    -0.2, 1.8, -0.2,
+    0, -0.2, 0
+  ];
+
+  // Apply convolution (skip edges for simplicity)
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      for (let c = 0; c < 3; c++) { // RGB channels only
+        let sum = 0;
+        
+        for (let ky = -1; ky <= 1; ky++) {
+          for (let kx = -1; kx <= 1; kx++) {
+            const idx = ((y + ky) * width + (x + kx)) * 4 + c;
+            const weight = weights[(ky + 1) * 3 + (kx + 1)];
+            sum += data[idx] * weight;
+          }
+        }
+
+        const outputIdx = (y * width + x) * 4 + c;
+        output[outputIdx] = Math.max(0, Math.min(255, sum));
+      }
+
+      // Copy alpha
+      const alphaIdx = (y * width + x) * 4 + 3;
+      output[alphaIdx] = 255;
+    }
+  }
+
+  // Copy edges (no sharpening)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (x === 0 || x === width - 1 || y === 0 || y === height - 1) {
+        const idx = (y * width + x) * 4;
+        for (let c = 0; c < 4; c++) {
+          output[idx + c] = data[idx + c];
+        }
+      }
+    }
+  }
+
+  // Put sharpened data back
+  for (let i = 0; i < data.length; i++) {
+    data[i] = output[i];
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+}
 
 function sendProgress(
   stage: string,
