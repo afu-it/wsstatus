@@ -101,16 +101,16 @@ self.onmessage = async (e: MessageEvent) => {
       quality: quality,
     });
 
-    // If file is less than 4MB (0-3MB range), upscale to reach 4-5MB
+    // If file is less than 4MB (0-3MB range), upscale to reach at least 4MB
     if (blob.size < TARGET_MIN_SIZE) {
       sendProgress("Optimizing", 70, "Upscaling for better quality...", true);
       
-      // Calculate upscale factor to reach ~4.5MB
+      // Calculate upscale factor to reach at least 4MB
       const targetPixels = (TARGET_MAX_SIZE / blob.size) * outputWidth * outputHeight;
       const upscaleFactor = Math.sqrt(targetPixels / (outputWidth * outputHeight));
       
-      // Limit upscale factor to 1.5x to avoid over-upscaling
-      const limitedUpscaleFactor = Math.min(upscaleFactor, 1.5);
+      // Allow up to 2x upscale for small files (was 1.5x)
+      const limitedUpscaleFactor = Math.min(upscaleFactor, 2.0);
       
       const newWidth = Math.round(outputWidth * limitedUpscaleFactor);
       const newHeight = Math.round(outputHeight * limitedUpscaleFactor);

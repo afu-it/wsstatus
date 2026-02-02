@@ -114,7 +114,7 @@ export function ResultView({
             highlight: true,
           },
           {
-            label: "Saved",
+            label: savedInfo.isPositive ? "Upscale" : "Saved",
             value: savedInfo.value,
             savedPositive: savedInfo.isPositive,
           },
