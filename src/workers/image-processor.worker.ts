@@ -19,6 +19,7 @@ self.onmessage = async (e: MessageEvent) => {
     file: File;
     adjustments?: {
       sharpening: number;
+      structure: number;
       hdr: number;
       upscale: boolean;
     };
@@ -26,8 +27,9 @@ self.onmessage = async (e: MessageEvent) => {
   };
 
   const adj = adjustments || {
-    sharpening: 20,
-    hdr: 8,
+    sharpening: 30,
+    structure: 15,
+    hdr: 5,
     upscale: true,
   };
 
@@ -121,14 +123,21 @@ self.onmessage = async (e: MessageEvent) => {
     ctx.drawImage(imageBitmap, 0, 0, outputWidth, outputHeight);
 
     if (!preview) {
-      sendProgress("Optimizing", 40, "Applying sharpening...", true);
+      sendProgress("Optimizing", 35, "Applying sharpening...", true);
     }
 
     // Apply sharpening
     applySharpening(ctx, outputWidth, outputHeight, adj.sharpening / 100);
 
     if (!preview) {
-      sendProgress("Optimizing", 45, "Applying HDR...", true);
+      sendProgress("Optimizing", 45, "Applying structure...", true);
+    }
+
+    // Apply structure
+    applyStructure(ctx, outputWidth, outputHeight, adj.structure / 100);
+
+    if (!preview) {
+      sendProgress("Optimizing", 50, "Applying HDR...", true);
     }
 
     // Apply HDR
@@ -321,6 +330,78 @@ function applySharpening(
     ctx.putImageData(imageData, 0, 0);
   } catch (e) {
     console.warn("Sharpening failed:", e);
+  }
+}
+
+/**
+ * Apply structure enhancement (texture enhancement)
+ * Amount is multiplied by 2 for visible texture enhancement
+ * Similar to Snapseed's Structure - enhances mid-tone details
+ */
+function applyStructure(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  if (amount <= 0) return;
+
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const resultData = new Uint8ClampedArray(data);
+
+    // Multiply amount by 2 for visible structure effect
+    const effectiveAmount = amount * 2;
+
+    const radius = 3; // Smaller radius for texture details
+    
+    for (let y = radius; y < height - radius; y++) {
+      for (let x = radius; x < width - radius; x++) {
+        const idx = (y * width + x) * 4;
+
+        let r = 0, g = 0, b = 0, count = 0;
+        for (let dy = -radius; dy <= radius; dy++) {
+          for (let dx = -radius; dx <= radius; dx++) {
+            const nIdx = ((y + dy) * width + (x + dx)) * 4;
+            r += data[nIdx];
+            g += data[nIdx + 1];
+            b += data[nIdx + 2];
+            count++;
+          }
+        }
+
+        const rAvg = r / count;
+        const gAvg = g / count;
+        const bAvg = b / count;
+
+        // Calculate luminance for texture enhancement
+        const lum = (data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114);
+        const lumAvg = (rAvg * 0.299 + gAvg * 0.587 + bAvg * 0.114);
+        const lumDiff = lum - lumAvg;
+
+        // Apply structure enhancement based on luminance difference
+        const factor = 1 + (effectiveAmount * (lumDiff / 255));
+        resultData[idx] = Math.min(255, Math.max(0, data[idx] * factor));
+        resultData[idx + 1] = Math.min(255, Math.max(0, data[idx + 1] * factor));
+        resultData[idx + 2] = Math.min(255, Math.max(0, data[idx + 2] * factor));
+      }
+    }
+
+    for (let i = 0; i < data.length; i += 4) {
+      if (i >= width * 4 * radius && i < width * 4 * (height - radius)) {
+        const x = (i / 4) % width;
+        if (x >= radius && x < width - radius) {
+          data[i] = resultData[i];
+          data[i + 1] = resultData[i + 1];
+          data[i + 2] = resultData[i + 2];
+        }
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    console.warn("Structure failed:", e);
   }
 }
 

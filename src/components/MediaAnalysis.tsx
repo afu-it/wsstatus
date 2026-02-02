@@ -11,8 +11,9 @@ interface MediaAnalysisProps {
 }
 
 const defaultAdjustments: ImageAdjustments = {
-  sharpening: 20,
-  hdr: 8,
+  sharpening: 30,
+  structure: 15,
+  hdr: 5,
   upscale: true,
 };
 

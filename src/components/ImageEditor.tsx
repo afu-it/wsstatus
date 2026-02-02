@@ -1,5 +1,6 @@
 export interface ImageAdjustments {
   sharpening: number;
+  structure: number;
   hdr: number;
   upscale: boolean;
 }
@@ -10,8 +11,9 @@ interface ImageEditorProps {
 }
 
 const defaultAdjustments: ImageAdjustments = {
-  sharpening: 20,
-  hdr: 8,
+  sharpening: 30,
+  structure: 15,
+  hdr: 5,
   upscale: true,
 };
 
@@ -72,20 +74,41 @@ export function ImageEditor({ adjustments, onChange }: ImageEditorProps) {
         />
       </div>
 
-      {/* Sharpening */}
+      {/* Details Section */}
       <div className="border-t border-gray-100 pt-4">
-        <div className="flex justify-between mb-1">
-          <label className="text-xs font-semibold text-gray-700">Sharpening</label>
-          <span className="text-xs text-gray-500">{adjustments.sharpening}%</span>
+        <p className="text-xs font-semibold text-gray-700 mb-3">Details</p>
+        
+        {/* Sharpening */}
+        <div className="mb-3">
+          <div className="flex justify-between mb-1">
+            <label className="text-[11px] font-medium text-gray-600">Sharpening</label>
+            <span className="text-[11px] text-gray-500">{adjustments.sharpening}%</span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="50"
+            value={adjustments.sharpening}
+            onChange={(e) => updateField("sharpening", parseInt(e.target.value))}
+            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-primary"
+          />
         </div>
-        <input
-          type="range"
-          min="0"
-          max="30"
-          value={adjustments.sharpening}
-          onChange={(e) => updateField("sharpening", parseInt(e.target.value))}
-          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-primary"
-        />
+
+        {/* Structure */}
+        <div>
+          <div className="flex justify-between mb-1">
+            <label className="text-[11px] font-medium text-gray-600">Structure</label>
+            <span className="text-[11px] text-gray-500">{adjustments.structure}%</span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="50"
+            value={adjustments.structure}
+            onChange={(e) => updateField("structure", parseInt(e.target.value))}
+            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-primary"
+          />
+        </div>
       </div>
     </div>
   );
