@@ -140,7 +140,7 @@ function App() {
     setStage("analysis");
   };
 
-  const handleOptimize = async (options: { sharpening: boolean } = { sharpening: true }) => {
+  const handleOptimize = async () => {
     if (!mediaFile) return;
 
     setStage("processing");
@@ -195,7 +195,6 @@ function App() {
         worker.postMessage({
           file: mediaFile.file,
           preset,
-          sharpening: options.sharpening,
         });
       } else {
         // Video processing
@@ -290,7 +289,6 @@ function App() {
         worker.postMessage({
           file: mediaFile.file,
           preset,
-          sharpening: options.sharpening,
         });
       }
     } catch (error) {

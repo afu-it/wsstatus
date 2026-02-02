@@ -264,7 +264,6 @@ function determineProcessingPlan(
 
   let targetWidth: number;
   let targetHeight: number;
-  let needsResize: boolean;
 
   if (isPortrait) {
     // Portrait: 1080 x 1920
@@ -277,7 +276,7 @@ function determineProcessingPlan(
   }
 
   // Check if we need to resize
-  needsResize =
+  const needsResize =
     info.effectiveWidth !== targetWidth ||
     info.effectiveHeight !== targetHeight;
 
