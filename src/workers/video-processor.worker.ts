@@ -249,35 +249,17 @@ function determineProcessingPlan(
 ): ProcessingPlan {
   const targetFps = 30;
 
-  const isPortrait = info.effectiveWidth < info.effectiveHeight;
+  // KEEP ORIGINAL DIMENSIONS - no resizing
+  const outputWidth = info.effectiveWidth;
+  const outputHeight = info.effectiveHeight;
 
-  // Define max dimensions based on orientation
-  const PORTRAIT_MAX_WIDTH = 1080;
-  const PORTRAIT_MAX_HEIGHT = 1920;
-  const LANDSCAPE_MAX_WIDTH = 1920;
-  const LANDSCAPE_MAX_HEIGHT = 1080;
-
-  let maxWidth: number;
-  let maxHeight: number;
-
-  if (isPortrait) {
-    maxWidth = PORTRAIT_MAX_WIDTH;
-    maxHeight = PORTRAIT_MAX_HEIGHT;
-  } else {
-    maxWidth = LANDSCAPE_MAX_WIDTH;
-    maxHeight = LANDSCAPE_MAX_HEIGHT;
-  }
-
-  const isOptimalResolution =
-    info.effectiveWidth <= maxWidth && info.effectiveHeight <= maxHeight;
   const isOptimalFps = info.fps <= targetFps;
   const isOptimalDuration = info.duration <= 90;
-  const isReasonableBitrate = info.bitrate < 4500000;
+  const isReasonableBitrate = info.bitrate < 8000000; // 8Mbps max
   const hasNoRotation = info.rotation === 0;
   const hasSquarePixels = Math.abs(info.sar - 1) < 0.01;
 
   const skipProcessing =
-    isOptimalResolution &&
     isOptimalFps &&
     isOptimalDuration &&
     isReasonableBitrate &&
@@ -288,16 +270,18 @@ function determineProcessingPlan(
   const targetDuration = Math.min(info.duration, 90);
   const needsRotation = info.rotation !== 0;
 
-  // Calculate output dimensions while preserving orientation
-  let outputWidth: number;
-  let outputHeight: number;
-  let needsResize = true;
-
-  if (info.effectiveWidth === maxWidth && info.effectiveHeight === maxHeight) {
-    // Already at max resolution
-    needsResize = false;
-    outputWidth = info.effectiveWidth;
-    outputHeight = info.effectiveHeight;
+  return {
+    skipProcessing,
+    needsResize: false, // Never resize - keep original
+    outputWidth,
+    outputHeight,
+    targetDuration,
+    trimRequired,
+    fps: Math.min(info.fps, targetFps), // Cap at 30fps if higher
+    rotation: info.rotation,
+    needsRotation,
+  };
+}
   } else if (
     info.effectiveWidth <= maxWidth &&
     info.effectiveHeight <= maxHeight

@@ -7,15 +7,7 @@ let lastSentProgress = 0;
 let lastProgressTime = 0;
 
 const PROGRESS_THROTTLE_MS = 100;
-
-// WhatsApp Status dimensions
-const WHATSAPP_PORTRAIT_WIDTH = 1080;
-const WHATSAPP_PORTRAIT_HEIGHT = 1920;
-const WHATSAPP_LANDSCAPE_WIDTH = 1920;
-const WHATSAPP_LANDSCAPE_HEIGHT = 1080;
-
-// GIF duration (short loop)
-const GIF_DURATION = 3;
+const GIF_DURATION = 3; // 3 seconds
 
 self.onmessage = async (e: MessageEvent) => {
   const { file } = e.data as { file: File; preset: Preset };
@@ -35,32 +27,14 @@ self.onmessage = async (e: MessageEvent) => {
 
     await ffmpeg.writeFile(inputName, fileData);
 
-    sendProgress("Analyzing", 15, "Detecting dimensions...", true);
-
-    // Probe image
-    let imageInfo: ImageInfo;
-    try {
-      imageInfo = await probeImage(ffmpeg, inputName);
-    } catch (error) {
-      console.error("Probe failed:", error);
-      imageInfo = { width: 1920, height: 1080 };
-    }
-
-    sendProgress("Planning", 20, "Optimizing for WhatsApp...", true);
-
-    // Determine orientation
-    const isPortrait = imageInfo.height > imageInfo.width;
-    const targetWidth = isPortrait ? WHATSAPP_PORTRAIT_WIDTH : WHATSAPP_LANDSCAPE_WIDTH;
-    const targetHeight = isPortrait ? WHATSAPP_PORTRAIT_HEIGHT : WHATSAPP_LANDSCAPE_HEIGHT;
-
     sendProgress("Converting", 30, "Creating optimized GIF...", true);
 
-    // Build FFmpeg command for high-quality GIF
+    // Simple command: keep original dimensions, just convert to GIF
     const ffmpegArgs = [
       "-loop", "1",
       "-i", inputName,
       "-t", GIF_DURATION.toString(),
-      "-vf", `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight},fps=10`,
+      "-vf", "fps=15", // 15fps for good quality/size balance
       "-y", outputName
     ];
 
@@ -100,6 +74,8 @@ self.onmessage = async (e: MessageEvent) => {
 
     sendProgress("Finalizing", 99, "Done!", true);
 
+    const fileSizeMB = (blob.size / (1024 * 1024)).toFixed(2);
+
     sendComplete({
       blob,
       metadata: {
@@ -108,7 +84,8 @@ self.onmessage = async (e: MessageEvent) => {
         compressionRatio: ((1 - blob.size / file.size) * 100),
         processingTime: 0,
         optimizationApplied: true,
-        threadingMode: "ffmpeg-gif",
+        threadingMode: "gif-optimized",
+        notes: `${fileSizeMB}MB • Original dimensions kept • ${GIF_DURATION}s GIF`,
       },
     });
   } catch (error) {
@@ -116,38 +93,6 @@ self.onmessage = async (e: MessageEvent) => {
     sendError(error);
   }
 };
-
-interface ImageInfo {
-  width: number;
-  height: number;
-}
-
-async function probeImage(
-  ffmpeg: import("@ffmpeg/ffmpeg").FFmpeg,
-  inputName: string
-): Promise<ImageInfo> {
-  let logOutput = "";
-
-  const logHandler = ({ message }: { message: string }) => {
-    logOutput += message + "\n";
-  };
-
-  ffmpeg.on("log", logHandler);
-
-  try {
-    await ffmpeg.exec(["-i", inputName, "-f", "null", "-"]);
-  } catch {
-    // Expected to fail
-  } finally {
-    ffmpeg.off("log", logHandler);
-  }
-
-  const resMatch = logOutput.match(/(\d{3,5})x(\d{3,5})/);
-  const width = resMatch ? parseInt(resMatch[1]) : 1920;
-  const height = resMatch ? parseInt(resMatch[2]) : 1080;
-
-  return { width, height };
-}
 
 function getFileExtension(filename: string): string {
   const parts = filename.split(".");
