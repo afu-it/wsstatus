@@ -127,14 +127,9 @@ self.onmessage = async (e: MessageEvent) => {
     await ffmpeg.deleteFile(inputName);
     await ffmpeg.deleteFile(outputName);
 
-    // Check file size
-    const MAX_FILE_SIZE = 6 * 1024 * 1024; // 6MB
-    if (blob.size > MAX_FILE_SIZE) {
-      const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
-      throw new Error(
-        `File size (${sizeMB}MB) exceeds 6MB limit. Try a shorter video.`
-      );
-    }
+    // No file size limit for videos - allow any size
+    const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
+    console.log(`Output video size: ${sizeMB}MB`);
 
     sendComplete({
       blob,
@@ -408,7 +403,7 @@ async function processFullQuality(
     sendProgress(
       "Optimizing",
       mappedProgress,
-      `Conditioning for WhatsApp... ${Math.round(rawPercent * 100)}%`
+      `Processing video... ${Math.round(rawPercent * 100)}%`
     );
   };
 
