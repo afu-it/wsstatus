@@ -7,6 +7,8 @@ let lastProgressTime = 0;
 
 const PROGRESS_THROTTLE_MS = 100;
 const MAX_FILE_SIZE = 6 * 1024 * 1024; // 6MB max (WhatsApp limit)
+const TARGET_MIN_SIZE = 4 * 1024 * 1024; // 4MB minimum target
+const TARGET_MAX_SIZE = 5 * 1024 * 1024; // 5MB target
 
 // Target resolution for WhatsApp Status
 const TARGET_SHORT_EDGE = 1080;
@@ -92,12 +94,51 @@ self.onmessage = async (e: MessageEvent) => {
 
     sendProgress("Optimizing", 55, "Encoding with maximum quality...", true);
 
-    // Simply encode at maximum quality - preserve original size/quality
-    const quality = 1.0;
-    const blob = await canvas.convertToBlob({
+    // Encode at maximum quality
+    let quality = 1.0;
+    let blob = await canvas.convertToBlob({
       type: "image/jpeg",
       quality: quality,
     });
+
+    // If file is less than 4MB (0-3MB range), upscale to reach 4-5MB
+    if (blob.size < TARGET_MIN_SIZE) {
+      sendProgress("Optimizing", 70, "Upscaling for better quality...", true);
+      
+      // Calculate upscale factor to reach ~4.5MB
+      const targetPixels = (TARGET_MAX_SIZE / blob.size) * outputWidth * outputHeight;
+      const upscaleFactor = Math.sqrt(targetPixels / (outputWidth * outputHeight));
+      
+      // Limit upscale factor to 1.5x to avoid over-upscaling
+      const limitedUpscaleFactor = Math.min(upscaleFactor, 1.5);
+      
+      const newWidth = Math.round(outputWidth * limitedUpscaleFactor);
+      const newHeight = Math.round(outputHeight * limitedUpscaleFactor);
+      
+      // Create larger canvas
+      const upscaledCanvas = new OffscreenCanvas(
+        newWidth - (newWidth % 2),
+        newHeight - (newHeight % 2)
+      );
+      const upscaledCtx = upscaledCanvas.getContext("2d", {
+        alpha: false,
+      });
+
+      if (upscaledCtx) {
+        upscaledCtx.imageSmoothingEnabled = true;
+        upscaledCtx.imageSmoothingQuality = "high";
+        upscaledCtx.drawImage(canvas, 0, 0, newWidth, newHeight);
+
+        // Re-encode at max quality
+        blob = await upscaledCanvas.convertToBlob({
+          type: "image/jpeg",
+          quality: 1.0,
+        });
+
+        outputWidth = newWidth;
+        outputHeight = newHeight;
+      }
+    }
 
     if (!blob) {
       throw new Error("Failed to process image");
@@ -115,11 +156,14 @@ self.onmessage = async (e: MessageEvent) => {
 
     const fileSizeMB = (blob.size / (1024 * 1024)).toFixed(2);
     const qualityPercent = Math.round(quality * 100);
-    const resNote = isUpscaling
-      ? "Upscaled"
-      : isDownscaling
-        ? "Optimized Resolution"
-        : "Original Quality";
+    const wasUpscaled = blob.size >= TARGET_MIN_SIZE && file.size < TARGET_MIN_SIZE;
+    const resNote = wasUpscaled
+      ? "Upscaled+"
+      : isUpscaling
+        ? "Upscaled"
+        : isDownscaling
+          ? "Optimized Resolution"
+          : "Original Quality";
 
     sendComplete({
       blob,

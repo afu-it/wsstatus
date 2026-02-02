@@ -16,7 +16,7 @@ import { preloadFFmpeg } from "./lib/ffmpeg-loader";
 import { useAlert } from "./context/AlertContext";
 
 import { AboutModal } from "./components/AboutModal";
-import { InstallDialog } from "./components/InstallDialog"; // Import the new component
+import { InstallDialog } from "./components/InstallDialog";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => void;
@@ -149,13 +149,14 @@ function App() {
 
     try {
       if (mediaFile.type === "image") {
-        // Import image processor worker
-        const ImageWorker =
-          await import("./workers/image-processor.worker?worker");
+        // @ts-ignore
+        const ImageWorker = await import(
+          /* @vite-ignore */ "./workers/image-processor.worker?worker&v=2"
+        );
         const worker = new ImageWorker.default();
         workerRef.current = worker;
 
-        worker.onmessage = (e) => {
+        worker.onmessage = (e: MessageEvent) => {
           const { type, payload } = e.data;
 
           if (type === "progress") {
@@ -221,7 +222,7 @@ function App() {
           setStage("analysis");
         }, 30000);
 
-        worker.onmessage = (e) => {
+        worker.onmessage = (e: MessageEvent) => {
           const { type, payload } = e.data;
 
           if (type === "progress") {
