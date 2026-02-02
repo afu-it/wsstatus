@@ -50,13 +50,18 @@ export function detectMediaType(file: File): MediaType | null {
     ) {
       return "image";
     }
+    // GIFs are treated as video for better quality (FFmpeg converts to MP4)
+    if (mimeType.includes("gif")) {
+      return "video";
+    }
   } else if (mimeType.startsWith("video/")) {
     if (
       mimeType.includes("mp4") ||
       mimeType.includes("mov") ||
       mimeType.includes("quicktime") ||
       mimeType.includes("mkv") ||
-      mimeType.includes("x-matroska")
+      mimeType.includes("x-matroska") ||
+      mimeType.includes("gif") // Support .gif with video mime type
     ) {
       return "video";
     }
