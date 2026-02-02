@@ -15,20 +15,10 @@ const defaultAdjustments: ImageAdjustments = {
   contrast: 2,
   blackPoint: 2,
   shadows: 2,
+  hdr: 2,
+  vibrant: 2,
+  saturation: 2,
   upscale: true,
-  iphoneMode: false,
-  iphonePreset: 1,
-  exposure: 91,
-  brilliance: 52,
-  highlights: -41,
-  shadow: 19,
-  brightness: 17,
-  blackpoint: 9,
-  saturation: 10,
-  vibrancy: 12,
-  warmth: 0,
-  tint: 0,
-  definition: 0,
 };
 
 export function MediaAnalysis({
