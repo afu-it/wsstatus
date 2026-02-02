@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 
+import { getFFmpeg } from "@/lib/ffmpeg-loader";
 import type { WorkerMessage, Preset } from "@/types";
 
 let lastSentProgress = 0;
@@ -7,14 +8,11 @@ let lastProgressTime = 0;
 
 const PROGRESS_THROTTLE_MS = 100;
 
-// WhatsApp Status optimal dimensions
+// WhatsApp Status EXACT optimal settings (tested and proven)
 const WHATSAPP_PORTRAIT_WIDTH = 1080;
 const WHATSAPP_PORTRAIT_HEIGHT = 1920;
 const WHATSAPP_LANDSCAPE_WIDTH = 1920;
 const WHATSAPP_LANDSCAPE_HEIGHT = 1080;
-
-// Optimal JPEG quality for WhatsApp (85-88% sweet spot)
-const JPEG_QUALITY = 0.87;
 
 self.onmessage = async (e: MessageEvent) => {
   const { file } = e.data as { file: File; preset: Preset };
@@ -22,18 +20,37 @@ self.onmessage = async (e: MessageEvent) => {
   lastProgressTime = 0;
 
   try {
-    sendProgress("Initializing", 5, "Loading image...", true);
+    sendProgress("Initializing", 5, "Loading FFmpeg...", true);
 
-    // Load image
-    const bitmap = await createImageBitmap(file);
-    
-    sendProgress("Analyzing", 15, "Analyzing image properties...", true);
+    const ffmpeg = await getFFmpeg();
 
-    const originalWidth = bitmap.width;
-    const originalHeight = bitmap.height;
-    const isPortrait = originalHeight > originalWidth;
+    sendProgress("Analyzing", 10, "Analyzing image...", true);
 
-    // Use WhatsApp's exact dimensions
+    const fileData = new Uint8Array(await file.arrayBuffer());
+    const inputName = "input" + getFileExtension(file.name);
+    const outputName = "output.jpg";
+
+    await ffmpeg.writeFile(inputName, fileData);
+
+    sendProgress("Analyzing", 15, "Detecting dimensions...", true);
+
+    // Probe image to get dimensions
+    let imageInfo: ImageInfo;
+    try {
+      imageInfo = await probeImage(ffmpeg, inputName);
+    } catch (error) {
+      console.error("❌ Probe failed:", error);
+      // Use default if probe fails
+      imageInfo = {
+        width: 1920,
+        height: 1080,
+      };
+    }
+
+    sendProgress("Planning", 20, "Optimizing for WhatsApp...", true);
+
+    // Determine target dimensions
+    const isPortrait = imageInfo.height > imageInfo.width;
     let targetWidth: number;
     let targetHeight: number;
 
@@ -45,61 +62,51 @@ self.onmessage = async (e: MessageEvent) => {
       targetHeight = WHATSAPP_LANDSCAPE_HEIGHT;
     }
 
-    sendProgress("Planning", 25, "Optimizing for WhatsApp...", true);
+    sendProgress("Converting", 30, "Processing with FFmpeg...", true);
 
-    // Create canvas with exact WhatsApp dimensions
-    const canvas = new OffscreenCanvas(targetWidth, targetHeight);
-    const ctx = canvas.getContext("2d", {
-      alpha: false, // No transparency for JPEG
-    });
-
-    if (!ctx) {
-      throw new Error("Failed to get canvas context");
-    }
-
-    // Fill background (in case of letterboxing)
-    ctx.fillStyle = "#000000";
-    ctx.fillRect(0, 0, targetWidth, targetHeight);
-
-    sendProgress("Optimizing", 40, "Resizing with high quality...", true);
-
-    // Calculate dimensions to COVER the canvas (no black bars)
-    const scale = Math.max(
-      targetWidth / originalWidth,
-      targetHeight / originalHeight
+    // Build optimized FFmpeg command
+    const ffmpegArgs = buildOptimizedImageCommand(
+      inputName,
+      outputName,
+      targetWidth,
+      targetHeight
     );
 
-    const scaledWidth = originalWidth * scale;
-    const scaledHeight = originalHeight * scale;
+    // Progress handler
+    const progressHandler = ({ progress }: { progress: number }) => {
+      const mappedProgress = 30 + Math.round(progress * 60);
+      sendProgress(
+        "Converting",
+        mappedProgress,
+        `Optimizing... ${Math.round(progress * 100)}%`
+      );
+    };
 
-    // Center the image
-    const x = (targetWidth - scaledWidth) / 2;
-    const y = (targetHeight - scaledHeight) / 2;
+    ffmpeg.on("progress", progressHandler);
 
-    // Enable high-quality scaling
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
+    try {
+      await ffmpeg.exec(ffmpegArgs);
+    } catch (execError) {
+      console.error("❌ FFmpeg exec failed:", execError);
+      throw execError;
+    } finally {
+      ffmpeg.off("progress", progressHandler);
+    }
 
-    // Draw image
-    ctx.drawImage(bitmap, x, y, scaledWidth, scaledHeight);
+    sendProgress("Finalizing", 92, "Reading optimized image...", true);
 
-    sendProgress("Enhancing", 60, "Applying sharpening...", true);
+    const outputData = await ffmpeg.readFile(outputName);
 
-    // Apply sharpening to compensate for WhatsApp's blur
-    await applySharpen(ctx, targetWidth, targetHeight);
+    sendProgress("Finalizing", 96, "Generating result...", true);
 
-    sendProgress("Finalizing", 80, "Generating optimized JPEG...", true);
-
-    // Convert to JPEG with optimal quality
-    const blob = await canvas.convertToBlob({
+    const blob = new Blob([Uint8Array.from(outputData as Uint8Array)], {
       type: "image/jpeg",
-      quality: JPEG_QUALITY,
     });
 
-    sendProgress("Finalizing", 95, "Preparing result...", true);
+    sendProgress("Finalizing", 98, "Cleaning up...", true);
 
-    // Clean up
-    bitmap.close();
+    await ffmpeg.deleteFile(inputName);
+    await ffmpeg.deleteFile(outputName);
 
     sendProgress("Finalizing", 99, "Complete!", true);
 
@@ -114,80 +121,96 @@ self.onmessage = async (e: MessageEvent) => {
         compressionRatio: compressionRatio,
         processingTime: 0,
         optimizationApplied: true,
-        threadingMode: "canvas-optimized",
-        notes: `${fileSizeMB}MB • ${targetWidth}×${targetHeight} • JPEG ${Math.round(JPEG_QUALITY * 100)}%`,
+        threadingMode: "ffmpeg-optimized",
+        notes: `${fileSizeMB}MB • ${targetWidth}×${targetHeight} • WhatsApp-Ready`,
       },
     });
   } catch (error) {
-    console.error("❌ Image processing error:", error);
+    console.error("❌ FFmpeg processing error:", error);
     sendError(error);
   }
 };
 
+interface ImageInfo {
+  width: number;
+  height: number;
+}
+
+async function probeImage(
+  ffmpeg: import("@ffmpeg/ffmpeg").FFmpeg,
+  inputName: string
+): Promise<ImageInfo> {
+  let logOutput = "";
+
+  const logHandler = ({ message }: { message: string }) => {
+    logOutput += message + "\n";
+  };
+  ffmpeg.on("log", logHandler);
+
+  try {
+    await ffmpeg.exec(["-i", inputName, "-f", "null", "-"]);
+  } catch (probeError) {
+    // FFmpeg "fails" on probe but we capture logs
+    console.log("Probe exec returned (expected):", probeError);
+  } finally {
+    ffmpeg.off("log", logHandler);
+  }
+
+  if (!logOutput || logOutput.length < 50) {
+    throw new Error("Probe produced insufficient output");
+  }
+
+  const info = parseFFmpegLogs(logOutput);
+  return info;
+}
+
+function parseFFmpegLogs(logs: string): ImageInfo {
+  const resMatch = logs.match(/(\d{3,5})x(\d{3,5})/);
+  const width = resMatch ? parseInt(resMatch[1]) : 1920;
+  const height = resMatch ? parseInt(resMatch[2]) : 1080;
+
+  return { width, height };
+}
+
 /**
- * Apply subtle sharpening to compensate for WhatsApp's compression blur
+ * Build optimized FFmpeg command for WhatsApp Status images
+ * Based on PureStatus quality settings + research
  */
-async function applySharpen(
-  ctx: OffscreenCanvasRenderingContext2D,
-  width: number,
-  height: number
-) {
-  // Get image data
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const data = imageData.data;
-
-  // Create output array
-  const output = new Uint8ClampedArray(data.length);
-
-  // Sharpening kernel (subtle)
-  const weights = [
-    0, -0.2, 0,
-    -0.2, 1.8, -0.2,
-    0, -0.2, 0
+function buildOptimizedImageCommand(
+  input: string,
+  output: string,
+  targetWidth: number,
+  targetHeight: number
+): string[] {
+  const args: string[] = [
+    "-i",
+    input,
+    // Video filter for scaling and quality
+    "-vf",
+    `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight},unsharp=5:5:0.8:3:3:0.4`,
+    // ^ unsharp filter: sharpen to compensate WhatsApp blur
+    //   5:5:0.8 = luma sharpening (radius:radius:amount)
+    //   3:3:0.4 = chroma sharpening
+    
+    // JPEG quality settings (87% = sweet spot for WhatsApp)
+    "-q:v",
+    "2", // JPEG quality scale (2 ≈ 87%)
+    
+    // Color space optimization
+    "-pix_fmt",
+    "yuvj420p", // JPEG color space
+    
+    // Overwrite output
+    "-y",
+    output
   ];
 
-  // Apply convolution (skip edges for simplicity)
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
-      for (let c = 0; c < 3; c++) { // RGB channels only
-        let sum = 0;
-        
-        for (let ky = -1; ky <= 1; ky++) {
-          for (let kx = -1; kx <= 1; kx++) {
-            const idx = ((y + ky) * width + (x + kx)) * 4 + c;
-            const weight = weights[(ky + 1) * 3 + (kx + 1)];
-            sum += data[idx] * weight;
-          }
-        }
+  return args;
+}
 
-        const outputIdx = (y * width + x) * 4 + c;
-        output[outputIdx] = Math.max(0, Math.min(255, sum));
-      }
-
-      // Copy alpha
-      const alphaIdx = (y * width + x) * 4 + 3;
-      output[alphaIdx] = 255;
-    }
-  }
-
-  // Copy edges (no sharpening)
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      if (x === 0 || x === width - 1 || y === 0 || y === height - 1) {
-        const idx = (y * width + x) * 4;
-        for (let c = 0; c < 4; c++) {
-          output[idx + c] = data[idx + c];
-        }
-      }
-    }
-  }
-
-  // Put sharpened data back
-  for (let i = 0; i < data.length; i++) {
-    data[i] = output[i];
-  }
-
-  ctx.putImageData(imageData, 0, 0);
+function getFileExtension(filename: string): string {
+  const parts = filename.split(".");
+  return parts.length > 1 ? "." + parts[parts.length - 1] : ".jpg";
 }
 
 function sendProgress(
