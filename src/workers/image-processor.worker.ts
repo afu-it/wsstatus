@@ -19,21 +19,45 @@ self.onmessage = async (e: MessageEvent) => {
     file: File;
     adjustments?: {
       sharpening: number;
-      highlights: number;
       contrast: number;
       blackPoint: number;
       shadows: number;
       upscale: boolean;
+      iphoneMode: boolean;
+      iphonePreset: number;
+      exposure: number;
+      brilliance: number;
+      highlights: number;
+      shadow: number;
+      brightness: number;
+      blackpoint: number;
+      saturation: number;
+      vibrancy: number;
+      warmth: number;
+      tint: number;
+      definition: number;
     };
   };
 
   const adj = adjustments || {
-    sharpening: 8,
-    highlights: 5,
-    contrast: 10,
-    blackPoint: 8,
-    shadows: -10,
+    sharpening: 9,
+    contrast: 2,
+    blackPoint: 2,
+    shadows: 2,
     upscale: true,
+    iphoneMode: false,
+    iphonePreset: 1,
+    exposure: 91,
+    brilliance: 52,
+    highlights: -41,
+    shadow: 19,
+    brightness: 17,
+    blackpoint: 9,
+    saturation: 10,
+    vibrancy: 12,
+    warmth: 0,
+    tint: 0,
+    definition: 0,
   };
 
   lastSentProgress = 0;
@@ -110,18 +134,30 @@ self.onmessage = async (e: MessageEvent) => {
     // Draw image scaled to target size
     ctx.drawImage(imageBitmap, 0, 0, outputWidth, outputHeight);
 
-    sendProgress("Optimizing", 40, "Applying light sharpening...", true);
+    sendProgress("Optimizing", 40, "Applying adjustments...", true);
 
-    // Apply sharpening
+    // Apply basic sharpening
     applySharpening(ctx, outputWidth, outputHeight, adj.sharpening / 100);
 
-    // Reduce highlights
-    reduceHighlights(ctx, outputWidth, outputHeight, adj.highlights / 100);
-
-    // Apply color adjustments
+    // Apply basic color adjustments
     applyContrast(ctx, outputWidth, outputHeight, adj.contrast / 100);
     applyBlackPoint(ctx, outputWidth, outputHeight, adj.blackPoint / 100);
     applyShadows(ctx, outputWidth, outputHeight, adj.shadows / 100);
+
+    // Apply iPhone style adjustments if enabled
+    if (adj.iphoneMode) {
+      applyExposure(ctx, outputWidth, outputHeight, adj.exposure / 100);
+      applyBrilliance(ctx, outputWidth, outputHeight, adj.brilliance / 100);
+      applyHighlights(ctx, outputWidth, outputHeight, adj.highlights / 100);
+      applyShadow(ctx, outputWidth, outputHeight, adj.shadow / 100);
+      applyBrightness(ctx, outputWidth, outputHeight, adj.brightness / 100);
+      applyBlackpoint(ctx, outputWidth, outputHeight, adj.blackpoint / 100);
+      applySaturation(ctx, outputWidth, outputHeight, adj.saturation / 100);
+      applyVibrancy(ctx, outputWidth, outputHeight, adj.vibrancy / 100);
+      applyWarmth(ctx, outputWidth, outputHeight, adj.warmth / 100);
+      applyTint(ctx, outputWidth, outputHeight, adj.tint / 100);
+      applyDefinition(ctx, outputWidth, outputHeight, adj.definition / 100);
+    }
 
     sendProgress("Optimizing", 55, "Encoding with maximum quality...", true);
 
@@ -162,10 +198,24 @@ self.onmessage = async (e: MessageEvent) => {
 
         // Apply adjustments to upscaled image
         applySharpening(upscaledCtx, newWidth, newHeight, adj.sharpening / 100);
-        reduceHighlights(upscaledCtx, newWidth, newHeight, adj.highlights / 100);
         applyContrast(upscaledCtx, newWidth, newHeight, adj.contrast / 100);
         applyBlackPoint(upscaledCtx, newWidth, newHeight, adj.blackPoint / 100);
         applyShadows(upscaledCtx, newWidth, newHeight, adj.shadows / 100);
+
+        // Apply iPhone style adjustments if enabled
+        if (adj.iphoneMode) {
+          applyExposure(upscaledCtx, newWidth, newHeight, adj.exposure / 100);
+          applyBrilliance(upscaledCtx, newWidth, newHeight, adj.brilliance / 100);
+          applyHighlights(upscaledCtx, newWidth, newHeight, adj.highlights / 100);
+          applyShadow(upscaledCtx, newWidth, newHeight, adj.shadow / 100);
+          applyBrightness(upscaledCtx, newWidth, newHeight, adj.brightness / 100);
+          applyBlackpoint(upscaledCtx, newWidth, newHeight, adj.blackpoint / 100);
+          applySaturation(upscaledCtx, newWidth, newHeight, adj.saturation / 100);
+          applyVibrancy(upscaledCtx, newWidth, newHeight, adj.vibrancy / 100);
+          applyWarmth(upscaledCtx, newWidth, newHeight, adj.warmth / 100);
+          applyTint(upscaledCtx, newWidth, newHeight, adj.tint / 100);
+          applyDefinition(upscaledCtx, newWidth, newHeight, adj.definition / 100);
+        }
 
         // Re-encode at max quality
         blob = await upscaledCanvas.convertToBlob({
@@ -301,36 +351,6 @@ function applySharpening(
 }
 
 /**
- * Reduce highlights by 10% (only affects bright areas)
- */
-function reduceHighlights(
-  ctx: OffscreenCanvasRenderingContext2D,
-  width: number,
-  height: number,
-  amount: number
-): void {
-  try {
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const data = imageData.data;
-    const threshold = 180;
-    const factor = 1 - amount;
-
-    for (let i = 0; i < data.length; i += 4) {
-      const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
-      if (brightness > threshold) {
-        data[i] = Math.min(255, Math.max(0, data[i] * factor));
-        data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor));
-        data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor));
-      }
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-  } catch (e) {
-    console.warn("Highlights reduction failed:", e);
-  }
-}
-
-/**
  * Apply contrast boost (10%)
  */
 function applyContrast(
@@ -409,5 +429,334 @@ function applyShadows(
     ctx.putImageData(imageData, 0, 0);
   } catch (e) {
     console.warn("Shadows adjustment failed:", e);
+  }
+}
+
+/**
+ * iPhone Style - Exposure
+ */
+function applyExposure(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const factor = 1 + amount;
+
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.min(255, Math.max(0, data[i] * factor));
+      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor));
+      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor));
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    console.warn("Exposure adjustment failed:", e);
+  }
+}
+
+/**
+ * iPhone Style - Brilliance (combination of brightness and contrast)
+ */
+function applyBrilliance(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const brightness = amount * 0.5;
+    const contrast = amount * 0.3;
+    const contrastFactor = (259 * (contrast * 255 + 255)) / (255 * (259 - contrast * 255));
+
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.min(255, Math.max(0, data[i] * contrastFactor - 128 * contrastFactor + 128 + brightness * 255));
+      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * contrastFactor - 128 * contrastFactor + 128 + brightness * 255));
+      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * contrastFactor - 128 * contrastFactor + 128 + brightness * 255));
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    console.warn("Brilliance adjustment failed:", e);
+  }
+}
+
+/**
+ * iPhone Style - Highlights
+ */
+function applyHighlights(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const threshold = 180;
+    const factor = 1 + amount;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      if (brightness > threshold) {
+        data[i] = Math.min(255, Math.max(0, data[i] * factor));
+        data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor));
+        data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor));
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    console.warn("Highlights adjustment failed:", e);
+  }
+}
+
+/**
+ * iPhone Style - Shadow
+ */
+function applyShadow(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const threshold = 80;
+    const factor = 1 + amount;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      if (brightness < threshold) {
+        data[i] = Math.min(255, Math.max(0, data[i] * factor));
+        data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor));
+        data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor));
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    console.warn("Shadow adjustment failed:", e);
+  }
+}
+
+/**
+ * iPhone Style - Brightness
+ */
+function applyBrightness(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const offset = amount * 255;
+
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.min(255, Math.max(0, data[i] + offset));
+      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + offset));
+      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + offset));
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    console.warn("Brightness adjustment failed:", e);
+  }
+}
+
+/**
+ * iPhone Style - Blackpoint
+ */
+function applyBlackpoint(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const threshold = 30;
+    const factor = 1 + amount;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      if (brightness < threshold) {
+        data[i] = Math.min(255, Math.max(0, data[i] * factor));
+        data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor));
+        data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor));
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    console.warn("Blackpoint adjustment failed:", e);
+  }
+}
+
+/**
+ * iPhone Style - Saturation
+ */
+function applySaturation(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const factor = 1 + amount;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = 0.2989 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      data[i] = Math.min(255, Math.max(0, gray + factor * (data[i] - gray)));
+      data[i + 1] = Math.min(255, Math.max(0, gray + factor * (data[i + 1] - gray)));
+      data[i + 2] = Math.min(255, Math.max(0, gray + factor * (data[i + 2] - gray)));
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    console.warn("Saturation adjustment failed:", e);
+  }
+}
+
+/**
+ * iPhone Style - Vibrancy (selective saturation boost)
+ */
+function applyVibrancy(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const max = Math.max(data[i], data[i + 1], data[i + 2]);
+      const min = Math.min(data[i], data[i + 1], data[i + 2]);
+      const saturation = max - min;
+
+      if (saturation > 0 && saturation < 50) {
+        const factor = 1 + amount * 2;
+        const gray = 0.2989 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        data[i] = Math.min(255, Math.max(0, gray + factor * (data[i] - gray)));
+        data[i + 1] = Math.min(255, Math.max(0, gray + factor * (data[i + 1] - gray)));
+        data[i + 2] = Math.min(255, Math.max(0, gray + factor * (data[i + 2] - gray)));
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    console.warn("Vibrancy adjustment failed:", e);
+  }
+}
+
+/**
+ * iPhone Style - Warmth (color temperature)
+ */
+function applyWarmth(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const originalR = data[i];
+      const originalB = data[i + 2];
+      data[i] = Math.min(255, Math.max(0, originalR + amount * 30));
+      data[i + 2] = Math.min(255, Math.max(0, originalB - amount * 30));
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    console.warn("Warmth adjustment failed:", e);
+  }
+}
+
+/**
+ * iPhone Style - Tint (magenta-green shift)
+ */
+function applyTint(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const originalG = data[i + 1];
+      data[i + 1] = Math.min(255, Math.max(0, originalG + amount * 20));
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    console.warn("Tint adjustment failed:", e);
+  }
+}
+
+/**
+ * iPhone Style - Definition (local contrast enhancement)
+ */
+function applyDefinition(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const blurData = new Uint8ClampedArray(data);
+
+    const blurRadius = 2;
+    for (let y = blurRadius; y < height - blurRadius; y++) {
+      for (let x = blurRadius; x < width - blurRadius; x++) {
+        const idx = (y * width + x) * 4;
+        let r = 0, g = 0, b = 0, count = 0;
+
+        for (let dy = -blurRadius; dy <= blurRadius; dy++) {
+          for (let dx = -blurRadius; dx <= blurRadius; dx++) {
+            const nIdx = ((y + dy) * width + (x + dx)) * 4;
+            r += data[nIdx];
+            g += data[nIdx + 1];
+            b += data[nIdx + 2];
+            count++;
+          }
+        }
+
+        blurData[idx] = r / count;
+        blurData[idx + 1] = g / count;
+        blurData[idx + 2] = b / count;
+      }
+    }
+
+    const factor = 1 + amount;
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.min(255, Math.max(0, data[i] * factor - blurData[i] * amount));
+      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor - blurData[i + 1] * amount));
+      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor - blurData[i + 2] * amount));
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    console.warn("Definition adjustment failed:", e);
   }
 }
