@@ -92,8 +92,11 @@ self.onmessage = async (e: MessageEvent) => {
 
     sendProgress("Optimizing", 40, "Applying light sharpening...", true);
 
-    // Apply very light sharpening (2%)
-    applySharpening(ctx, outputWidth, outputHeight, 0.02);
+    // Apply 5% sharpening
+    applySharpening(ctx, outputWidth, outputHeight, 0.05);
+
+    // Reduce brightness by 10% to balance sharpening
+    reduceBrightness(ctx, outputWidth, outputHeight, 0.10);
 
     sendProgress("Optimizing", 55, "Encoding with maximum quality...", true);
 
@@ -132,8 +135,11 @@ self.onmessage = async (e: MessageEvent) => {
         upscaledCtx.imageSmoothingQuality = "high";
         upscaledCtx.drawImage(canvas, 0, 0, newWidth, newHeight);
 
-        // Apply light sharpening to upscaled image
-        applySharpening(upscaledCtx, newWidth, newHeight, 0.02);
+        // Apply 5% sharpening to upscaled image
+        applySharpening(upscaledCtx, newWidth, newHeight, 0.05);
+
+        // Reduce brightness by 10%
+        reduceBrightness(upscaledCtx, newWidth, newHeight, 0.10);
 
         // Re-encode at max quality
         blob = await upscaledCanvas.convertToBlob({
@@ -265,5 +271,31 @@ function applySharpening(
     ctx.putImageData(imageData, 0, 0);
   } catch (e) {
     console.warn("Sharpening failed:", e);
+  }
+}
+
+/**
+ * Reduce brightness by specified amount (10%)
+ */
+function reduceBrightness(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const factor = 1 - amount;
+
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.min(255, Math.max(0, data[i] * factor));
+      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor));
+      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor));
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (e) {
+    console.warn("Brightness reduction failed:", e);
   }
 }
