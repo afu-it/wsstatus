@@ -37,8 +37,8 @@ export function VideoEditor({ adjustments, onChange }: VideoEditorProps) {
       </div>
 
       <div className="text-xs text-gray-500 bg-blue-50 border border-blue-100 rounded-lg p-2.5">
-        <p className="font-semibold text-blue-700 mb-1">Output: 1080p @ 30fps</p>
-        <p className="text-blue-600">Video will be optimized to 1080p resolution at 30 frames per second for WhatsApp Status.</p>
+        <p className="font-semibold text-blue-700 mb-1">Output: 720p @ 30fps · 6 Mbps</p>
+        <p className="text-blue-600">Video will be optimized to 720p resolution at 30 frames per second with 6 Mbps bitrate for WhatsApp Status.</p>
       </div>
 
       {/* HDR */}

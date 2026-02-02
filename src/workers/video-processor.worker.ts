@@ -274,20 +274,20 @@ function determineProcessingPlan(
 ): ProcessingPlan {
   const targetFps = 30;
 
-  // Target 1080p resolution
+  // Target 720p resolution for faster encoding
   const isPortrait = info.effectiveWidth < info.effectiveHeight;
 
   let targetWidth: number;
   let targetHeight: number;
 
   if (isPortrait) {
-    // Portrait: 1080 x 1920
-    targetWidth = 1080;
-    targetHeight = 1920;
+    // Portrait: 720 x 1280
+    targetWidth = 720;
+    targetHeight = 1280;
   } else {
-    // Landscape: 1920 x 1080
-    targetWidth = 1920;
-    targetHeight = 1080;
+    // Landscape: 1280 x 720
+    targetWidth = 1280;
+    targetHeight = 720;
   }
 
   // Check if we need to resize
@@ -509,21 +509,11 @@ function buildOptimizedFFmpegCommand(
     args.push("-vf", filters.join(","));
   }
 
-  // Calculate optimal bitrate to maximize quality within 6MB limit
-  // File size = (video bitrate + audio bitrate) * duration / 8
-  // Target: 5.8MB for maximum quality = 6076416 bytes
-  const targetDuration = plan.targetDuration || info.duration || 30;
-  const audioBitrate = 128; // kbps (fixed)
-  const targetFileSizeBytes = 5.8 * 1024 * 1024; // 5.8MB target (near max)
-  const targetBitrate = Math.floor(
-    (targetFileSizeBytes * 8) / targetDuration / 1000 - audioBitrate
-  ); // in kbps
-
-  // MAXIMIZE bitrate between 3000k and 8000k for best quality
-  const videoBitrate = Math.max(3000, Math.min(8000, targetBitrate));
+  // Fixed bitrate: 6 Mbps for consistent quality and faster encoding
+  const videoBitrate = 6000; // 6 Mbps = 6000 kbps
 
   console.log(
-    `Duration: ${targetDuration}s, Calculated bitrate: ${targetBitrate}kbps, Using: ${videoBitrate}kbps`
+    `Using fixed bitrate: ${videoBitrate}kbps for 720p 30fps output`
   );
 
   // Optimized for SPEED - ultrafast preset for 5-10x faster encoding
@@ -536,8 +526,8 @@ function buildOptimizedFFmpegCommand(
     "3.1", // Lower level for faster encoding
     "-preset",
     "ultrafast", // FASTEST encoding preset (5-10x speed boost)
-    "-crf",
-    "23", // Use CRF for faster encoding than bitrate mode
+    "-b:v",
+    `${videoBitrate}k`, // Fixed 6 Mbps bitrate
     "-maxrate",
     `${videoBitrate}k`,
     "-bufsize",
