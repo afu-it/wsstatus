@@ -326,11 +326,16 @@ function App() {
     <div className="min-h-screen mesh-gradient selection:bg-brand-primary/20 transition-colors duration-500 font-sans">
       {/* Compact Top Navigation */}
       <nav className="fixed top-0 left-0 w-full px-3 sm:px-4 py-2.5 sm:py-3 flex justify-between items-center z-50 bg-white/90 backdrop-blur-lg border-b border-gray-100/50 shadow-sm">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:gap-3">
           <div className="flex items-center gap-2 px-2 sm:px-2.5 py-1 bg-gray-50 rounded-full border border-gray-100">
             <span className="text-[9px] sm:text-[10px] font-semibold text-gray-500">
               v{__APP_VERSION__}
             </span>
+          </div>
+          <div className="hidden sm:block text-[11px] text-gray-500">
+            <span className="font-semibold text-gray-700">WhatsApp Media Optimizer</span>
+            <span className="mx-1.5">•</span>
+            <span>Optimize images & videos for Status</span>
           </div>
         </div>
 
