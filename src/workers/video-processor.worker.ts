@@ -279,7 +279,6 @@ function determineProcessingPlan(
     outputHeight,
     targetDuration,
     trimRequired,
-    fps: Math.min(info.fps, targetFps), // Cap at 30fps if higher
     rotation: info.rotation,
     needsRotation,
   };
