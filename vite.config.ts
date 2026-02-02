@@ -21,12 +21,31 @@ export default defineConfig({
         enabled: false, // Disable service worker in development
       },
       workbox: {
+        // Exclude worker files from precaching to prevent stale worker issues
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        globIgnores: ["**/node_modules/**/*", "**/*worker*.js"],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,
+        // Force navigation preload to get fresh content
+        navigationPreload: true,
         runtimeCaching: [
+          {
+            // Workers should use NetworkFirst to always get latest version
+            urlPattern: /.*worker.*\.js$/,
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "worker-cache-v2",
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60, // 1 hour only
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
           {
             // Cache both single-threaded and multi-threaded FFmpeg cores
             urlPattern:
